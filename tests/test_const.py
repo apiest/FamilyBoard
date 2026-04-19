@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType
 
 from custom_components.familyboard.const import (
     DEVICE_IDENTIFIER,
@@ -15,8 +15,9 @@ from custom_components.familyboard.const import (
 
 
 def test_get_device_info_returns_deviceinfo() -> None:
+    # DeviceInfo is a TypedDict, so isinstance() is not supported; check dict.
     info = get_device_info()
-    assert isinstance(info, DeviceInfo)
+    assert isinstance(info, dict)
     assert info["identifiers"] == {DEVICE_IDENTIFIER}
     assert info["name"] == DEVICE_NAME
     assert info["entry_type"] is DeviceEntryType.SERVICE
