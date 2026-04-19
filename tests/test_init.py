@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 
 from custom_components.familyboard.const import DOMAIN
@@ -28,7 +29,13 @@ async def test_filter_select_entity_present(hass: HomeAssistant, sample_config) 
     assert await async_setup_component(hass, DOMAIN, {DOMAIN: sample_config})
     await hass.async_block_till_done()
 
-    state = hass.states.get("select.familyboard_calendar")
+    # Look up by unique_id since the actual entity_id depends on translations
+    # (with `has_entity_name = True` HA derives the slug from the device + name).
+    ent_reg = er.async_get(hass)
+    entity_id = ent_reg.async_get_entity_id("select", DOMAIN, "familyboard_calendar")
+    assert entity_id is not None, "calendar filter select entity not registered"
+
+    state = hass.states.get(entity_id)
     assert state is not None
     assert "Alles" in state.attributes["options"]
     assert "Berry" in state.attributes["options"]
