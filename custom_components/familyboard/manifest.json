@@ -1,12 +1,12 @@
 {
   "domain": "familyboard",
   "name": "FamilyBoard",
-  "version": "0.1.0",
   "codeowners": ["@apiest"],
   "config_flow": true,
   "dependencies": ["calendar", "todo", "http", "lovelace"],
   "documentation": "https://github.com/apiest/FamilyBoard",
-  "issue_tracker": "https://github.com/apiest/FamilyBoard/issues",
   "iot_class": "local_polling",
-  "requirements": []
+  "issue_tracker": "https://github.com/apiest/FamilyBoard/issues",
+  "requirements": [],
+  "version": "0.1.0"
 }
