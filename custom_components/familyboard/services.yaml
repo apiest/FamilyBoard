@@ -1,0 +1,36 @@
+add_event:
+  name: Add calendar event
+  description: >-
+    Create a calendar event using the FamilyBoard add-event form entities
+    (select.familyboard_event_member, select.familyboard_event_calendar,
+    text.familyboard_event_title, switch.familyboard_event_all_day,
+    datetime.familyboard_event_start, datetime.familyboard_event_end,
+    datetime.familyboard_day_start, datetime.familyboard_day_end).
+    Reads the current entity states, creates the event on the matching
+    member calendar, and resets the form.
+
+snooze_test:
+  name: Test snooze reminder
+  description: >-
+    Force-fire a snooze notification for a given task uid (for testing).
+  fields:
+    uid:
+      name: Task UID
+      description: The Google Tasks uid of the task to fire a reminder for.
+      required: true
+      example: "RE5QaTNIeEhaLS1xQm83OA"
+      selector:
+        text:
+
+cancel_reminder:
+  name: Cancel snooze reminder
+  description: >-
+    Cancel an active snooze reminder for a given task uid.
+  fields:
+    uid:
+      name: Task UID
+      description: The Google Tasks uid of the reminder to cancel.
+      required: true
+      example: "RE5QaTNIeEhaLS1xQm83OA"
+      selector:
+        text:

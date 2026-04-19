@@ -1,0 +1,71 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "FamilyBoard",
+        "description": "FamilyBoard wordt momenteel via YAML geconfigureerd. Voeg een `familyboard:` blok toe aan je `configuration.yaml` en herstart Home Assistant."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Er wordt maar één FamilyBoard-instantie ondersteund."
+    }
+  },
+  "entity": {
+    "calendar": {
+      "alles": { "name": "Alles" },
+      "trash": { "name": "Afval" }
+    },
+    "sensor": {
+      "chores": { "name": "Taken" },
+      "compliment": { "name": "Begroeting" },
+      "members": { "name": "Leden" },
+      "progress": { "name": "Voortgang" }
+    },
+    "select": {
+      "calendar_filter": { "name": "Kalenderfilter" },
+      "view": { "name": "Weergave" },
+      "layout": { "name": "Layout" },
+      "event_member": { "name": "Event wie" },
+      "event_calendar": { "name": "Event agenda" }
+    },
+    "switch": {
+      "event_all_day": { "name": "Event hele dag" },
+      "show_reminders": { "name": "Herinneringen tonen" }
+    },
+    "text": {
+      "event_title": { "name": "Event titel" }
+    },
+    "datetime": {
+      "event_start": { "name": "Event start" },
+      "event_end": { "name": "Event einde" },
+      "day_start": { "name": "Dag start" },
+      "day_end": { "name": "Dag einde" }
+    }
+  },
+  "services": {
+    "add_event": {
+      "name": "Kalender-event toevoegen",
+      "description": "Maakt een kalender-event aan met de FamilyBoard add-event formulier-entiteiten en reset het formulier."
+    },
+    "snooze_test": {
+      "name": "Snooze-herinnering testen",
+      "description": "Forceer een snooze-notificatie voor een opgegeven task uid (voor testdoeleinden).",
+      "fields": {
+        "uid": {
+          "name": "Task UID",
+          "description": "De Google Tasks uid van de taak waarvoor een herinnering moet worden afgevuurd."
+        }
+      }
+    },
+    "cancel_reminder": {
+      "name": "Snooze-herinnering annuleren",
+      "description": "Annuleer een actieve snooze-herinnering voor een opgegeven task uid.",
+      "fields": {
+        "uid": {
+          "name": "Task UID",
+          "description": "De Google Tasks uid van de herinnering die geannuleerd moet worden."
+        }
+      }
+    }
+  }
+}

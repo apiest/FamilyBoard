@@ -1,0 +1,71 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "FamilyBoard",
+        "description": "FamilyBoard is currently configured via YAML. Add a `familyboard:` block to your `configuration.yaml` and restart Home Assistant."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only one FamilyBoard instance is supported."
+    }
+  },
+  "entity": {
+    "calendar": {
+      "alles": { "name": "All" },
+      "trash": { "name": "Trash" }
+    },
+    "sensor": {
+      "chores": { "name": "Chores" },
+      "compliment": { "name": "Greeting" },
+      "members": { "name": "Members" },
+      "progress": { "name": "Progress" }
+    },
+    "select": {
+      "calendar_filter": { "name": "Calendar filter" },
+      "view": { "name": "View" },
+      "layout": { "name": "Layout" },
+      "event_member": { "name": "Event member" },
+      "event_calendar": { "name": "Event calendar" }
+    },
+    "switch": {
+      "event_all_day": { "name": "Event all day" },
+      "show_reminders": { "name": "Show reminders" }
+    },
+    "text": {
+      "event_title": { "name": "Event title" }
+    },
+    "datetime": {
+      "event_start": { "name": "Event start" },
+      "event_end": { "name": "Event end" },
+      "day_start": { "name": "Day start" },
+      "day_end": { "name": "Day end" }
+    }
+  },
+  "services": {
+    "add_event": {
+      "name": "Add calendar event",
+      "description": "Create a calendar event using the FamilyBoard add-event form entities and reset the form."
+    },
+    "snooze_test": {
+      "name": "Test snooze reminder",
+      "description": "Force-fire a snooze notification for a given task uid (for testing).",
+      "fields": {
+        "uid": {
+          "name": "Task UID",
+          "description": "The Google Tasks uid of the task to fire a reminder for."
+        }
+      }
+    },
+    "cancel_reminder": {
+      "name": "Cancel snooze reminder",
+      "description": "Cancel an active snooze reminder for a given task uid.",
+      "fields": {
+        "uid": {
+          "name": "Task UID",
+          "description": "The Google Tasks uid of the reminder to cancel."
+        }
+      }
+    }
+  }
+}
