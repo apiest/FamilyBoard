@@ -7,9 +7,9 @@ with persistent state across HA restarts.
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timedelta
-from typing import Any, Callable
+import logging
+from typing import Any
 
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers.event import (
@@ -21,7 +21,6 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     ACTION_PREFIX,
-    DOMAIN,
     NOTIFICATION_TAG_PREFIX,
     SNOOZE_LARGE_STEP_MIN,
     SNOOZE_MAX_MIN,
@@ -52,6 +51,7 @@ class ReminderManager:
     """Manages scheduled reminders, notifications and snooze actions."""
 
     def __init__(self, hass: HomeAssistant, members: list[dict]) -> None:
+        """Initialize the reminder manager with HA + member configs."""
         self.hass = hass
         self.members = {m["name"]: m for m in members}
         self._store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
@@ -168,30 +168,32 @@ class ReminderManager:
     # ----------------------------------------------------------- timer helpers
 
     def _schedule_timer(self, uid: str, when: datetime) -> None:
+        """Arm a one-shot timer that fires the reminder at ``when``."""
         self._cancel_timer(uid)
 
         @callback
         def _fire(_now: datetime) -> None:
+            """Timer callback dispatching the reminder fire."""
             self._timers.pop(uid, None)
             self.hass.async_create_task(self._fire_reminder(uid))
 
         self._timers[uid] = async_track_point_in_time(self.hass, _fire, when)
 
     def _cancel_timer(self, uid: str) -> None:
+        """Cancel any pending reminder timer for ``uid``."""
         cancel = self._timers.pop(uid, None)
         if cancel:
             cancel()
 
     def _cancel_person_listener(self, uid: str) -> None:
+        """Cancel any pending person-state listener for ``uid``."""
         cancel = self._person_listeners.pop(uid, None)
         if cancel:
             cancel()
 
     # ------------------------------------------------------- notification core
 
-    async def _fire_reminder(
-        self, uid: str, task: dict | None = None
-    ) -> None:
+    async def _fire_reminder(self, uid: str, task: dict | None = None) -> None:
         """Send the initial reminder notification (offset reset to 0)."""
         st = self._state.get(uid)
         if not st and task:
@@ -257,7 +259,10 @@ class ReminderManager:
         if offset == 0:
             # Initial: snooze options + done
             actions.append(
-                {"action": self._action_id(ACT_PLUS, uid), "title": f"+{SNOOZE_STEP_MIN}m"}
+                {
+                    "action": self._action_id(ACT_PLUS, uid),
+                    "title": f"+{SNOOZE_STEP_MIN}m",
+                }
             )
             if person_away:
                 actions.append(
@@ -265,18 +270,27 @@ class ReminderManager:
                 )
             else:
                 actions.append(
-                    {"action": self._action_id(ACT_PLUS_LARGE, uid), "title": f"+{SNOOZE_LARGE_STEP_MIN}m"}
+                    {
+                        "action": self._action_id(ACT_PLUS_LARGE, uid),
+                        "title": f"+{SNOOZE_LARGE_STEP_MIN}m",
+                    }
                 )
             actions.append(
                 {"action": self._action_id(ACT_DONE, uid), "title": "✓ Klaar"}
             )
         else:
-            # Snoozing: ±15 + confirm (Done bereikbaar via opnieuw +15→0 of via taakkaart)
+            # Snoozing: -15 + confirm (Done bereikbaar via opnieuw +15->0 of via taakkaart)
             actions.append(
-                {"action": self._action_id(ACT_MINUS, uid), "title": f"−{SNOOZE_STEP_MIN}m"}
+                {
+                    "action": self._action_id(ACT_MINUS, uid),
+                    "title": f"-{SNOOZE_STEP_MIN}m",
+                }
             )
             actions.append(
-                {"action": self._action_id(ACT_PLUS, uid), "title": f"+{SNOOZE_STEP_MIN}m"}
+                {
+                    "action": self._action_id(ACT_PLUS, uid),
+                    "title": f"+{SNOOZE_STEP_MIN}m",
+                }
             )
             actions.append(
                 {"action": self._action_id(ACT_CONFIRM, uid), "title": "✅ Bevestig"}
@@ -300,10 +314,11 @@ class ReminderManager:
                 },
                 blocking=False,
             )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("FamilyBoard: notify.%s failed for %s: %s", target, uid, err)
+        except Exception:
+            _LOGGER.exception("FamilyBoard: notify.%s failed for %s", target, uid)
 
     async def _clear_notification(self, uid: str) -> None:
+        """Dismiss the active mobile notification for ``uid``, if any."""
         st = self._state.get(uid)
         if not st:
             return
@@ -318,28 +333,33 @@ class ReminderManager:
                 {"message": "clear_notification", "data": {"tag": tag}},
                 blocking=False,
             )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.warning("FamilyBoard: clear notification failed for %s: %s", uid, err)
+        except Exception as err:
+            _LOGGER.warning(
+                "FamilyBoard: clear notification failed for %s: %s", uid, err
+            )
 
     @staticmethod
     def _action_id(action: str, uid: str) -> str:
+        """Build the notification action id used in mobile_app actions."""
         return f"{ACTION_PREFIX}_{action}__{uid}"
 
     # --------------------------------------------------------- event handling
 
     @callback
     def _handle_action_event(self, event: Event) -> None:
+        """Route mobile_app notification action events to the dispatcher."""
         action = event.data.get("action", "")
         if not action.startswith(ACTION_PREFIX + "_"):
             return
         try:
-            rest = action[len(ACTION_PREFIX) + 1:]
+            rest = action[len(ACTION_PREFIX) + 1 :]
             act_name, uid = rest.split("__", 1)
         except ValueError:
             return
         self.hass.async_create_task(self._dispatch_action(act_name, uid))
 
     async def _dispatch_action(self, act_name: str, uid: str) -> None:
+        """Apply the action (snooze ±, confirm, home, done) to a reminder."""
         st = self._state.get(uid)
         if not st:
             _LOGGER.debug("FamilyBoard: action %s for unknown uid %s", act_name, uid)
@@ -354,7 +374,9 @@ class ReminderManager:
             st["snooze_offset_min"] = min(SNOOZE_MAX_MIN, offset + SNOOZE_STEP_MIN)
             await self._push_notification(uid)
         elif act_name == ACT_PLUS_LARGE:
-            st["snooze_offset_min"] = min(SNOOZE_MAX_MIN, offset + SNOOZE_LARGE_STEP_MIN)
+            st["snooze_offset_min"] = min(
+                SNOOZE_MAX_MIN, offset + SNOOZE_LARGE_STEP_MIN
+            )
             await self._push_notification(uid)
         elif act_name == ACT_CONFIRM:
             await self._confirm_snooze(uid)
@@ -366,6 +388,7 @@ class ReminderManager:
         await self._async_save()
 
     async def _confirm_snooze(self, uid: str) -> None:
+        """Commit the pending snooze offset and arm a new timer."""
         st = self._state.get(uid)
         if not st:
             return
@@ -381,6 +404,7 @@ class ReminderManager:
         self._schedule_timer(uid, when)
 
     async def _wait_for_home(self, uid: str) -> None:
+        """Re-fire the reminder once the member's person entity goes home."""
         st = self._state.get(uid)
         if not st:
             return
@@ -393,6 +417,7 @@ class ReminderManager:
 
         @callback
         def _on_change(event: Event) -> None:
+            """Fire the reminder when the watched person reaches home."""
             new_state = event.data.get("new_state")
             if new_state and new_state.state == "home":
                 cancel = self._person_listeners.pop(uid, None)
@@ -406,6 +431,7 @@ class ReminderManager:
         )
 
     async def _complete_task(self, uid: str) -> None:
+        """Mark the linked todo item complete and clear local state."""
         st = self._state.get(uid)
         if not st:
             return
@@ -420,10 +446,8 @@ class ReminderManager:
                     target={"entity_id": todo_entity},
                     blocking=True,
                 )
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.error(
-                    "FamilyBoard: todo.update_item failed for %s: %s", uid, err
-                )
+            except Exception:
+                _LOGGER.exception("FamilyBoard: todo.update_item failed for %s", uid)
         st["status"] = "done"
         self._cancel_timer(uid)
         self._cancel_person_listener(uid)
@@ -445,10 +469,12 @@ class ReminderManager:
     # --------------------------------------------------------------- internals
 
     async def _async_save(self) -> None:
+        """Persist current reminder state to the storage file."""
         await self._store.async_save({"reminders": self._state})
 
     @staticmethod
     def _parse_iso(value: Any) -> datetime | None:
+        """Parse an ISO-8601 timestamp; return None on failure."""
         if not value:
             return None
         try:

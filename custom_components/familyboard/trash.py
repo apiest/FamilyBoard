@@ -11,8 +11,8 @@ Deduplicates via persistent storage and auto-completes after collection day.
 
 from __future__ import annotations
 
-import logging
 from datetime import date as date_cls, datetime, timedelta
+import logging
 from typing import Any
 
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
@@ -21,7 +21,6 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    DOMAIN,
     TRASH_CHORE_STORAGE_KEY,
     TRASH_CHORE_STORAGE_VERSION,
 )
@@ -45,6 +44,11 @@ class TrashChoreManager:
         trash_config: list[dict],
         shared_chores: list[dict],
     ) -> None:
+        """Initialize the manager and resolve the target trash todo entity.
+
+        Inspects ``shared_chores`` for the first entry with ``type: trash`` and
+        uses that ``todo.*`` entity for auto-created chores.
+        """
         self.hass = hass
         self.trash_config = trash_config
         # Find the shared_chores entity with type: trash
@@ -119,11 +123,7 @@ class TrashChoreManager:
                 continue  # Past collection, skip
 
             attrs = state.attributes
-            label = (
-                t.get("label")
-                or attrs.get("label")
-                or ttype.capitalize()
-            )
+            label = t.get("label") or attrs.get("label") or ttype.capitalize()
             emoji = (
                 t.get("emoji")
                 or attrs.get("emoji")
@@ -184,11 +184,10 @@ class TrashChoreManager:
                 due,
                 self._trash_todo_entity,
             )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error(
-                "TrashChoreManager: failed to create chore '%s': %s",
+        except Exception:
+            _LOGGER.exception(
+                "TrashChoreManager: failed to create chore '%s'",
                 summary,
-                err,
             )
 
     async def async_auto_complete(self) -> None:
@@ -244,11 +243,10 @@ class TrashChoreManager:
                                 info["summary"],
                             )
                             break
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.error(
-                    "TrashChoreManager: failed to auto-complete '%s': %s",
+            except Exception:
+                _LOGGER.exception(
+                    "TrashChoreManager: failed to auto-complete '%s'",
                     info["summary"],
-                    err,
                 )
 
             completed_keys.append(key)

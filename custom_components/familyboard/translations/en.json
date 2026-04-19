@@ -3,11 +3,110 @@
     "step": {
       "user": {
         "title": "FamilyBoard",
-        "description": "FamilyBoard is currently configured via YAML. Add a `familyboard:` block to your `configuration.yaml` and restart Home Assistant."
+        "description": "FamilyBoard will be created as a singleton entry. After it is created, open it under Settings \u2192 Devices & Services \u2192 FamilyBoard \u2192 Configure to add members, trash collections and shared items."
       }
     },
     "abort": {
       "single_instance_allowed": "Only one FamilyBoard instance is supported."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "FamilyBoard",
+        "description": "What do you want to configure?",
+        "menu_options": {
+          "members": "Members",
+          "trash": "Trash collections",
+          "shared_calendars": "Shared calendars",
+          "shared_chores": "Shared chores",
+          "save": "Save and exit"
+        }
+      },
+      "members": {
+        "title": "Members",
+        "description": "Pick a member to edit, add a new one, or go back. ({count} configured)",
+        "data": {"action": "Action"}
+      },
+      "member_action": {
+        "title": "Member: {name}",
+        "data": {"action": "Action"}
+      },
+      "member_edit": {
+        "title": "Member details",
+        "data": {
+          "name": "Name",
+          "calendar": "Primary calendar",
+          "calendar_label": "Calendar label",
+          "calendar_default_summary": "Default summary",
+          "calendar_default_description": "Default description",
+          "color": "Color (hex)",
+          "person": "Person entity",
+          "notify": "Notify target (mobile_app_*)",
+          "chores": "Chore lists"
+        }
+      },
+      "member_extras": {
+        "title": "Extra calendars",
+        "data": {"action": "Action"}
+      },
+      "member_extra_edit": {
+        "title": "Extra calendar",
+        "data": {
+          "entity": "Calendar entity",
+          "label": "Label",
+          "default_summary": "Default summary",
+          "default_description": "Default description",
+          "__remove__": "Remove this entry"
+        }
+      },
+      "trash": {
+        "title": "Trash collections",
+        "data": {"action": "Action"}
+      },
+      "trash_edit": {
+        "title": "Trash collection",
+        "data": {
+          "type": "Type",
+          "sensor": "Sensor",
+          "label": "Label",
+          "color": "Color (hex)",
+          "emoji": "Emoji",
+          "__remove__": "Remove this entry"
+        }
+      },
+      "shared_calendars": {
+        "title": "Shared calendars",
+        "data": {"action": "Action"}
+      },
+      "shared_calendar_edit": {
+        "title": "Shared calendar",
+        "data": {
+          "entity": "Calendar entity",
+          "members": "Members",
+          "name": "Name",
+          "color": "Color (hex)",
+          "__remove__": "Remove this entry"
+        }
+      },
+      "shared_chores": {
+        "title": "Shared chores",
+        "data": {"action": "Action"}
+      },
+      "shared_chore_edit": {
+        "title": "Shared chore",
+        "data": {
+          "entity": "Todo entity",
+          "members": "Members",
+          "type": "Type",
+          "name": "Name",
+          "color": "Color (hex)",
+          "__remove__": "Remove this entry"
+        }
+      }
+    },
+    "error": {
+      "base": "Invalid input: {error}"
     }
   },
   "entity": {

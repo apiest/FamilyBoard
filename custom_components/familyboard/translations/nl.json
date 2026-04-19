@@ -3,11 +3,110 @@
     "step": {
       "user": {
         "title": "FamilyBoard",
-        "description": "FamilyBoard wordt momenteel via YAML geconfigureerd. Voeg een `familyboard:` blok toe aan je `configuration.yaml` en herstart Home Assistant."
+        "description": "FamilyBoard wordt als singleton-entry aangemaakt. Open daarna Instellingen \u2192 Apparaten en services \u2192 FamilyBoard \u2192 Configureer om leden, afval en gedeelde items toe te voegen."
       }
     },
     "abort": {
-      "single_instance_allowed": "Er wordt maar één FamilyBoard-instantie ondersteund."
+      "single_instance_allowed": "Er wordt maar \u00e9\u00e9n FamilyBoard-instantie ondersteund."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "FamilyBoard",
+        "description": "Wat wil je configureren?",
+        "menu_options": {
+          "members": "Leden",
+          "trash": "Afval",
+          "shared_calendars": "Gedeelde agenda's",
+          "shared_chores": "Gedeelde taken",
+          "save": "Opslaan en sluiten"
+        }
+      },
+      "members": {
+        "title": "Leden",
+        "description": "Kies een lid om te bewerken, voeg een nieuw lid toe, of ga terug. ({count} geconfigureerd)",
+        "data": {"action": "Actie"}
+      },
+      "member_action": {
+        "title": "Lid: {name}",
+        "data": {"action": "Actie"}
+      },
+      "member_edit": {
+        "title": "Leden details",
+        "data": {
+          "name": "Naam",
+          "calendar": "Hoofdagenda",
+          "calendar_label": "Agenda-label",
+          "calendar_default_summary": "Standaard titel",
+          "calendar_default_description": "Standaard omschrijving",
+          "color": "Kleur (hex)",
+          "person": "Person-entiteit",
+          "notify": "Notify target (mobile_app_*)",
+          "chores": "Takenlijsten"
+        }
+      },
+      "member_extras": {
+        "title": "Extra agenda's",
+        "data": {"action": "Actie"}
+      },
+      "member_extra_edit": {
+        "title": "Extra agenda",
+        "data": {
+          "entity": "Agenda-entiteit",
+          "label": "Label",
+          "default_summary": "Standaard titel",
+          "default_description": "Standaard omschrijving",
+          "__remove__": "Verwijder dit item"
+        }
+      },
+      "trash": {
+        "title": "Afval",
+        "data": {"action": "Actie"}
+      },
+      "trash_edit": {
+        "title": "Afvalsoort",
+        "data": {
+          "type": "Type",
+          "sensor": "Sensor",
+          "label": "Label",
+          "color": "Kleur (hex)",
+          "emoji": "Emoji",
+          "__remove__": "Verwijder dit item"
+        }
+      },
+      "shared_calendars": {
+        "title": "Gedeelde agenda's",
+        "data": {"action": "Actie"}
+      },
+      "shared_calendar_edit": {
+        "title": "Gedeelde agenda",
+        "data": {
+          "entity": "Agenda-entiteit",
+          "members": "Leden",
+          "name": "Naam",
+          "color": "Kleur (hex)",
+          "__remove__": "Verwijder dit item"
+        }
+      },
+      "shared_chores": {
+        "title": "Gedeelde taken",
+        "data": {"action": "Actie"}
+      },
+      "shared_chore_edit": {
+        "title": "Gedeelde taak",
+        "data": {
+          "entity": "Todo-entiteit",
+          "members": "Leden",
+          "type": "Type",
+          "name": "Naam",
+          "color": "Kleur (hex)",
+          "__remove__": "Verwijder dit item"
+        }
+      }
+    },
+    "error": {
+      "base": "Ongeldige invoer: {error}"
     }
   },
   "entity": {

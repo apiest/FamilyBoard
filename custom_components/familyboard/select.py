@@ -15,7 +15,7 @@ import logging
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -40,7 +40,7 @@ async def async_setup_entry(
         unique_id="familyboard_calendar",
         translation_key="calendar_filter",
         icon="mdi:filter-variant",
-        options=[ALLES] + member_names,
+        options=[ALLES, *member_names],
         default=ALLES,
     )
     view = FamilyBoardSelect(
@@ -97,22 +97,25 @@ class FamilyBoardSelect(SelectEntity, RestoreEntity):
         options: list[str],
         default: str | None,
     ) -> None:
+        """Initialize the select with metadata, options and default value."""
         self._attr_unique_id = unique_id
         self._attr_translation_key = translation_key
         self._attr_icon = icon
         self._attr_options = list(options)
-        self._attr_current_option = default if default in options else (
-            options[0] if options else None
+        self._attr_current_option = (
+            default if default in options else (options[0] if options else None)
         )
         self._attr_device_info = get_device_info()
 
     async def async_added_to_hass(self) -> None:
+        """Restore the previously selected option on startup."""
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
         if last and last.state in (self._attr_options or []):
             self._attr_current_option = last.state
 
     async def async_select_option(self, option: str) -> None:
+        """Select a new option, ignoring values not in the option list."""
         if option not in (self._attr_options or []):
             _LOGGER.warning(
                 "Ignoring select_option(%s) for %s; not in %s",
@@ -142,13 +145,12 @@ class FamilyBoardEventCalendarSelect(FamilyBoardSelect):
         members: list[dict],
         member_select: FamilyBoardSelect,
     ) -> None:
+        """Initialize and seed options from the first member's calendars."""
         self._members_by_name = {m["name"]: m for m in members}
         self._member_select = member_select
 
         first_member = members[0] if members else None
-        initial_options = (
-            member_calendar_labels(first_member) if first_member else [""]
-        )
+        initial_options = member_calendar_labels(first_member) if first_member else [""]
         super().__init__(
             unique_id="familyboard_event_calendar",
             translation_key="event_calendar",
@@ -158,6 +160,7 @@ class FamilyBoardEventCalendarSelect(FamilyBoardSelect):
         )
 
     async def async_added_to_hass(self) -> None:
+        """Subscribe to member-select changes after registration."""
         await super().async_added_to_hass()
         if self._member_select.entity_id:
             self.async_on_remove(
@@ -169,7 +172,8 @@ class FamilyBoardEventCalendarSelect(FamilyBoardSelect):
             )
 
     @callback
-    def _on_member_change(self, event) -> None:
+    def _on_member_change(self, event: Event) -> None:
+        """Replace options when the selected member changes."""
         new_state = event.data.get("new_state")
         if not new_state:
             return
