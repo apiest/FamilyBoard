@@ -277,6 +277,49 @@ Required HACS frontend resources (the integration warns if missing):
 - Local testing: `pip install -r requirements_test.txt && pytest`.
 - CI: GitHub Actions runs hassfest, HACS validation and pytest on every push.
 
+### Dev container (recommended for manual testing)
+
+Run a real Home Assistant instance against this repo without touching
+your production HA.
+
+**Prerequisites:** Docker, VS Code, and the
+[Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+extension.
+
+1. Open the repo in VS Code → Command Palette → **Dev Containers:
+   Reopen in Container**. First build runs `scripts/setup`, which
+   installs `requirements-dev.txt` (Home Assistant + ruff + pytest
+   stack).
+2. In the integrated terminal: `scripts/develop`. HA starts on
+   <http://localhost:8123> with this repo's
+   `custom_components/familyboard` on `PYTHONPATH` (no bind mounts or
+   symlinks). VS Code users can also hit F5 → *Home Assistant: dev
+   (scripts/develop)* to launch under debugpy.
+3. First boot — exercise the real end-user flow:
+   1. Create the owner account.
+   2. **Settings → Devices & services → Add integration** and add:
+      - Local Calendar × 2 → `Dev A`, `Dev B`
+      - Local To-do × 3 → `Dev A`, `Dev B`, `Trash`
+   3. Add **FamilyBoard**, then use the options flow to wire two
+      members (Dev_A, Dev_B) to the entities above and add `todo.trash`
+      as a shared chore (`type: trash`).
+4. `config/.storage/` (git-ignored) persists this setup across
+   container rebuilds, so it's a one-time exercise.
+
+Iteration loop:
+
+- Python edits → restart HA from **Developer Tools → YAML → Restart**
+  (or Ctrl+C in the `scripts/develop` terminal and re-run).
+- Frontend (`custom_components/familyboard/frontend/*.js`) edits →
+  hard-reload the browser (Ctrl+Shift+R). If a card "doesn't exist"
+  after editing, open DevTools → Application → Service Workers → tick
+  *Bypass for network*.
+- Format + lint: `scripts/lint`.
+- Tests: `pytest`.
+
+Without Docker, the same `scripts/setup` and `scripts/develop` work in
+a host virtualenv.
+
 ## Acknowledgements
 
 This project was developed with substantial help from AI coding assistants
