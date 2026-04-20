@@ -168,6 +168,40 @@ familyboard:
 | `sensor.familyboard_members` | Member metadata for cards |
 | `sensor.familyboard_progress` | Per-member daily completion progress |
 | `sensor.familyboard_compliment` | Time-of-day greeting |
+| `sensor.familyboard_meals` | Tonight's meal + 7-day week strip (requires `meal_calendar`) |
+| `sensor.familyboard_recent_meals` | Top recent meal titles scored by usage and recency for the quick picker |
+| `binary_sensor.familyboard_meals_unplanned` | `on` when any of the next 7 days has no meal entry; placeholders count as planned |
+
+#### Meal placeholders
+
+If you want a day to count as "planned" without specifying a real meal
+(eating out, leftovers, skip), create the calendar event with one of
+these titles (case-insensitive): `-`, `--`, `?`, `geen`, `none`,
+`n/a`. The board renders 🚫 for that day and the
+`binary_sensor.familyboard_meals_unplanned` stays off.
+
+#### Example automation — alert when next week has gaps
+
+```yaml
+automation:
+  - alias: "Maaltijden plannen reminder"
+    trigger:
+      - platform: time
+        at: "18:00:00"
+    condition:
+      - condition: state
+        entity_id: binary_sensor.familyboard_meals_unplanned
+        state: "on"
+    action:
+      - service: notify.mobile_app_phone
+        data:
+          title: "Plan de maaltijden"
+          message: >-
+            {{ state_attr('binary_sensor.familyboard_meals_unplanned',
+            'count') }} dagen zonder maaltijd — eerstvolgende:
+            {{ state_attr('binary_sensor.familyboard_meals_unplanned',
+            'next_unplanned') }}.
+```
 
 ### Controls (form / filter)
 

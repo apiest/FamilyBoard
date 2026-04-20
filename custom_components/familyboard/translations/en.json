@@ -118,13 +118,32 @@
       "chores": { "name": "Chores" },
       "compliment": { "name": "Greeting" },
       "meals": { "name": "Meals" },
+      "recent_meals": { "name": "Recent meals" },
       "members": { "name": "Members" },
       "progress": { "name": "Progress" }
     },
+    "binary_sensor": {
+      "meals_unplanned": { "name": "Meals to plan" }
+    },
     "select": {
       "calendar_filter": { "name": "Calendar filter" },
-      "view": { "name": "View" },
-      "layout": { "name": "Layout" },
+      "view": {
+        "name": "View",
+        "state": {
+          "today": "Today",
+          "tomorrow": "Tomorrow",
+          "week": "Week",
+          "two_weeks": "2 Weeks",
+          "month": "Month"
+        }
+      },
+      "layout": {
+        "name": "Layout",
+        "state": {
+          "list": "List",
+          "agenda": "Agenda"
+        }
+      },
       "event_member": { "name": "Event member" },
       "event_calendar": { "name": "Event calendar" }
     },

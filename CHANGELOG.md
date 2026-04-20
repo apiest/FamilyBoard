@@ -8,15 +8,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Visual editors for every FamilyBoard custom card
+  (`progress`, `chores`, `calendar`, `filter`, `view`). Each card now
+  exposes `getConfigElement()`/`getStubConfig()` returning a tiny
+  `ha-form`-driven editor, so the dashboard card picker no longer
+  shows "Visuele editor niet ondersteund". Schema covers the keys the
+  cards already read; dict-typed options (`colors`, `names`,
+  `filter_map`, `shared_calendars`, `member_entities`, `icons`,
+  `extra_chips`) remain YAML-only.
+- New `custom:familyboard-view-card` Lovelace card that renders chip
+  selectors for any FamilyBoard `select` entity (default
+  `select.familyboard_view`). Labels are pulled from Home Assistant
+  state translations via `hass.formatEntityState`, so adding a new
+  language only requires updating `translations/<lang>.json`.
+- Stable English option keys for `select.familyboard_view`
+  (`today`/`tomorrow`/`week`/`two_weeks`/`month`) and
+  `select.familyboard_layout` (`list`/`agenda`). Existing
+  installations with restored Dutch states are migrated
+  automatically. User-visible labels are now driven by the new
+  `entity.select.{view,layout}.state.*` translation blocks.
 - Meal planning Phase 1: optional `meal_calendar` config key, new
   `sensor.familyboard_meals` exposing tonight's meal and a 7-day week
-  attribute, plus a "Vanavond" + week-strip + "Maaltijd toevoegen"
+  attribute, plus a "Vanavond" + week-strip + "Maaltijd plannen"
   block in the dashboard.
-- Auto-seeded **FamilyBoard** sidebar dashboard. The integration now
-  creates a storage-mode Lovelace dashboard at `/familyboard` on first
-  startup, rendered via the `custom:familyboard` strategy. Users can
-  edit the dashboard freely afterwards; the seed only runs when no
-  dashboard with that URL path exists.
+- Meal placeholders: titles `-`, `--`, `?`, `geen`, `none`, `n/a`
+  (case-insensitive) mark a day as deliberately skipped. They render
+  as 🚫 on the board and do not trigger the unplanned-meal alert.
+- New `binary_sensor.familyboard_meals_unplanned` (device class
+  `problem`) is on whenever any of the next 7 days has no meal entry
+  at all (skipped placeholders count as planned). Attributes expose
+  `unplanned_dates`, `count`, and `next_unplanned` so users can wire
+  their own automation/notifications.
+- Meal planning Phase 2: new `sensor.familyboard_recent_meals` scoring
+  the last 90 days of meal events (`uses − recency_penalty`,
+  capped at 12 distinct titles) and a Bubble Card pop-up
+  (`#meal-picker`) on the dashboard that lists the top picks as
+  tappable buttons creating an all-day event for today on the
+  meals calendar.
 - Dev container (`.devcontainer.json`) plus `scripts/setup`,
   `scripts/develop`, `scripts/lint`, `requirements-dev.txt` and a
   minimal `config/configuration.yaml` for running a local Home
@@ -27,6 +55,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   equivalent under debugpy) and `pytest` on the current file.
 
 ### Changed
+- Dashboards (`familyboard.yaml`, `tasks.yaml`) and the
+  `familyboard-strategy` no longer hand-build view-chip
+  `mushroom-chips-card` blocks; they delegate to the new
+  `custom:familyboard-view-card`.
+- Card console banners now report `<manifest-version>-<short-hash>`
+  instead of a hardcoded string, sourced from `manifest.json` at
+  resource-registration time.
 - `familyboard-filter-card` now styles selection state via `card-mod`'s
   `mushroom-chip$` selector targeting the inner `.chip` element. The
   previous `:host`/`ha-card` selector never painted because the chip

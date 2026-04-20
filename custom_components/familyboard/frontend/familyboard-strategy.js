@@ -56,28 +56,11 @@ function _filterCard(cfg) {
 }
 
 function _viewChips(cfg) {
-  const opts = [
-    ["Vandaag", "mdi:calendar-today"],
-    ["Morgen", "mdi:calendar-arrow-right"],
-    ["Week", "mdi:calendar-week"],
-    ["2 Weken", "mdi:calendar-range"],
-    ["Maand", "mdi:calendar-month"],
-  ];
+  // Delegates label rendering + i18n to the dedicated view card.
   return {
-    type: "custom:mushroom-chips-card",
+    type: "custom:familyboard-view-card",
+    entity: cfg.view_entity,
     grid_options: { columns: 12, rows: 1 },
-    chips: opts.map(([opt, icon]) => ({
-      type: "template",
-      icon,
-      content: opt,
-      icon_color: `{{ 'amber' if is_state('${cfg.view_entity}', '${opt}') else 'grey' }}`,
-      tap_action: {
-        action: "perform-action",
-        perform_action: "select.select_option",
-        target: { entity_id: cfg.view_entity },
-        data: { option: opt },
-      },
-    })),
   };
 }
 
@@ -203,7 +186,7 @@ function _lijstCard(cfg, members) {
   })()`;
   return {
     type: "conditional",
-    conditions: [{ entity: cfg.layout_entity, state: "Lijst" }],
+    conditions: [{ entity: cfg.layout_entity, state: "list" }],
     card: {
       type: "custom:config-template-card",
       entities: [cfg.filter_entity, cfg.view_entity],
@@ -213,23 +196,23 @@ function _lijstCard(cfg, members) {
         VIEW: `states['${cfg.view_entity}'].state`,
         DAYS: `(() => {
             const v = states['${cfg.view_entity}'].state;
-            if (v === 'Vandaag') return 1;
-            if (v === 'Morgen') return 2;
-            if (v === 'Week') return 7;
-            if (v === '2 Weken') return 14;
+            if (v === 'today') return 1;
+            if (v === 'tomorrow') return 2;
+            if (v === 'week') return 7;
+            if (v === 'two_weeks') return 14;
             return 'month';
           })()`,
         STARTDAY: `(() => {
             const v = states['${cfg.view_entity}'].state;
-            if (v === 'Vandaag') return 'today';
-            if (v === 'Morgen') return 'tomorrow';
-            if (v === 'Week') return 'monday';
-            if (v === 'Maand') return 'monday';
+            if (v === 'today') return 'today';
+            if (v === 'tomorrow') return 'tomorrow';
+            if (v === 'week') return 'monday';
+            if (v === 'month') return 'monday';
             return 'today';
           })()`,
         COMPACT: `(() => {
             const v = states['${cfg.view_entity}'].state;
-            return v === 'Maand';
+            return v === 'month';
           })()`,
       },
       card: {
@@ -485,8 +468,16 @@ customElements.define(
   FamilyBoardViewStrategy
 );
 
+const FB_VERSION = (() => {
+  try {
+    return new URL(import.meta.url).searchParams.get("v") || "dev";
+  } catch (_e) {
+    return "dev";
+  }
+})();
+
 console.info(
-  "%c FAMILYBOARD-STRATEGY %c v1.0 ",
+  `%c FAMILYBOARD-STRATEGY %c v${FB_VERSION} `,
   "color: white; background: #4A90D9; font-weight: 700;",
   "color: #4A90D9; background: white; font-weight: 700;"
 );

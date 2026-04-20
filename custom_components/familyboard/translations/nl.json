@@ -118,13 +118,32 @@
       "chores": { "name": "Taken" },
       "compliment": { "name": "Begroeting" },
       "meals": { "name": "Maaltijden" },
+      "recent_meals": { "name": "Recente maaltijden" },
       "members": { "name": "Leden" },
       "progress": { "name": "Voortgang" }
     },
+    "binary_sensor": {
+      "meals_unplanned": { "name": "Maaltijden te plannen" }
+    },
     "select": {
       "calendar_filter": { "name": "Kalenderfilter" },
-      "view": { "name": "Weergave" },
-      "layout": { "name": "Layout" },
+      "view": {
+        "name": "Weergave",
+        "state": {
+          "today": "Vandaag",
+          "tomorrow": "Morgen",
+          "week": "Week",
+          "two_weeks": "2 Weken",
+          "month": "Maand"
+        }
+      },
+      "layout": {
+        "name": "Layout",
+        "state": {
+          "list": "Lijst",
+          "agenda": "Agenda"
+        }
+      },
       "event_member": { "name": "Event wie" },
       "event_calendar": { "name": "Event agenda" }
     },

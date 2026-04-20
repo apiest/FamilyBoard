@@ -20,7 +20,15 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import ALLES, DOMAIN, LAYOUT_OPTIONS, VIEW_OPTIONS, get_device_info
+from .const import (
+    ALLES,
+    DOMAIN,
+    LAYOUT_OPTIONS,
+    LEGACY_LAYOUT_STATE_MAP,
+    LEGACY_VIEW_STATE_MAP,
+    VIEW_OPTIONS,
+    get_device_info,
+)
 from .helpers import member_calendar_labels
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,16 +57,18 @@ async def async_setup_entry(
         translation_key="view",
         icon="mdi:eye",
         options=VIEW_OPTIONS,
-        default="Week",
+        default="week",
         object_id="familyboard_view",
+        legacy_state_map=LEGACY_VIEW_STATE_MAP,
     )
     layout = FamilyBoardSelect(
         unique_id="familyboard_layout",
         translation_key="layout",
         icon="mdi:view-dashboard-variant",
         options=LAYOUT_OPTIONS,
-        default="Lijst",
+        default="list",
         object_id="familyboard_layout",
+        legacy_state_map=LEGACY_LAYOUT_STATE_MAP,
     )
     event_member = FamilyBoardSelect(
         unique_id="familyboard_event_member",
@@ -101,6 +111,7 @@ class FamilyBoardSelect(SelectEntity, RestoreEntity):
         options: list[str],
         default: str | None,
         object_id: str | None = None,
+        legacy_state_map: dict[str, str] | None = None,
     ) -> None:
         """Initialize the select with metadata, options and default value."""
         self._attr_unique_id = unique_id
@@ -110,6 +121,7 @@ class FamilyBoardSelect(SelectEntity, RestoreEntity):
         self._attr_current_option = (
             default if default in options else (options[0] if options else None)
         )
+        self._legacy_state_map = legacy_state_map or {}
         self._attr_device_info = get_device_info()
         # Pin the entity_id so it matches the constants the dashboard uses,
         # regardless of what the translation key would otherwise produce.
@@ -121,8 +133,21 @@ class FamilyBoardSelect(SelectEntity, RestoreEntity):
         """Restore the previously selected option on startup."""
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
-        if last and last.state in (self._attr_options or []):
-            self._attr_current_option = last.state
+        if not last:
+            return
+        state = last.state
+        if state in (self._attr_options or []):
+            self._attr_current_option = state
+        elif state in self._legacy_state_map:
+            mapped = self._legacy_state_map[state]
+            if mapped in (self._attr_options or []):
+                _LOGGER.info(
+                    "Migrating legacy %s state %r -> %r",
+                    self.entity_id,
+                    state,
+                    mapped,
+                )
+                self._attr_current_option = mapped
 
     async def async_select_option(self, option: str) -> None:
         """Select a new option, ignoring values not in the option list."""

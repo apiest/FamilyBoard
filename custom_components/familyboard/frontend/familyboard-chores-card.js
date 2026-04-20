@@ -126,18 +126,18 @@ class FamilyBoardChoresCard extends HTMLElement {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     let endDate = null;
 
-    if (view === "Vandaag") {
+    if (view === "today") {
       endDate = new Date(today);
-    } else if (view === "Morgen") {
+    } else if (view === "tomorrow") {
       endDate = new Date(today);
       endDate.setDate(endDate.getDate() + 1);
-    } else if (view === "Week") {
+    } else if (view === "week") {
       endDate = new Date(today);
       endDate.setDate(endDate.getDate() + 7);
-    } else if (view === "2 Weken") {
+    } else if (view === "two_weeks") {
       endDate = new Date(today);
       endDate.setDate(endDate.getDate() + 14);
-    } else if (view === "Maand") {
+    } else if (view === "month") {
       endDate = new Date(today);
       endDate.setDate(endDate.getDate() + 30);
     }
@@ -598,8 +598,64 @@ class FamilyBoardChoresCard extends HTMLElement {
       members_entity: "sensor.familyboard_members",
     };
   }
+
+  static async getConfigElement() {
+    await customElements.whenDefined("ha-form");
+    return document.createElement("familyboard-chores-card-editor");
+  }
 }
 
+const CHORES_EDITOR_SCHEMA = [
+  { name: "entity", required: true, selector: { entity: { domain: "sensor" } } },
+  { name: "filter_entity", selector: { entity: { domain: "select" } } },
+  { name: "view_entity", selector: { entity: { domain: "select" } } },
+  { name: "members_entity", selector: { entity: { domain: "sensor" } } },
+  { name: "member", selector: { text: {} } },
+  { name: "show_header", selector: { boolean: {} } },
+];
+
+class FamilyBoardChoresCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._form = null;
+    this._config = {};
+    this._hass = null;
+  }
+
+  setConfig(config) {
+    this._config = config || {};
+    this._update();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._update();
+  }
+
+  _update() {
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.computeLabel = (s) => s.label || s.name;
+      this._form.schema = CHORES_EDITOR_SCHEMA;
+      this._form.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this.dispatchEvent(
+          new CustomEvent("config-changed", {
+            detail: { config: ev.detail.value },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      });
+      this.shadowRoot.appendChild(this._form);
+    }
+    if (this._hass) this._form.hass = this._hass;
+    this._form.data = this._config;
+  }
+}
+
+customElements.define("familyboard-chores-card-editor", FamilyBoardChoresCardEditor);
 customElements.define("familyboard-chores-card", FamilyBoardChoresCard);
 
 window.customCards = window.customCards || [];

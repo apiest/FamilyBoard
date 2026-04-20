@@ -3,6 +3,7 @@
 - `sensor.familyboard_chores`     — combined chore list with datetime + uid
 - `sensor.familyboard_compliment` — time-of-day greeting
 - `sensor.familyboard_meals`      — today's meal + upcoming week
+- `sensor.familyboard_recent_meals` — scored recent meal titles for the picker
 - `sensor.familyboard_members`    — member metadata for cards
 - `sensor.familyboard_progress`   — per-member chore progress
 """
@@ -46,6 +47,7 @@ async def async_setup_entry(
             FamilyBoardChoresSensor(coordinator, conf),
             FamilyBoardComplimentSensor(),
             FamilyBoardMealsSensor(coordinator, conf),
+            FamilyBoardRecentMealsSensor(coordinator, conf),
             FamilyBoardMembersSensor(coordinator),
             FamilyBoardProgressSensor(coordinator),
         ],
@@ -261,5 +263,45 @@ class FamilyBoardMealsSensor(CoordinatorEntity, SensorEntity):
         return {
             "tonight": self._tonight(),
             "week": week,
+            "meal_calendar_entity": self._conf.get("meal_calendar"),
+        }
+
+
+class FamilyBoardRecentMealsSensor(CoordinatorEntity, SensorEntity):
+    """Sensor exposing recently used meal titles for the quick picker.
+
+    State is the number of distinct titles. Attributes expose ``items``
+    (the scored, deduped list capped at ``MEAL_PICKER_LIMIT``) and
+    ``meal_calendar_entity`` so cards can call ``calendar.create_event``
+    against the right target.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "recent_meals"
+
+    def __init__(self, coordinator: DataUpdateCoordinator, conf: dict) -> None:
+        """Store the coordinator and resolved config."""
+        super().__init__(coordinator)
+        self._conf = conf
+        self._attr_unique_id = "familyboard_recent_meals"
+        self._attr_icon = "mdi:history"
+        self._attr_device_info = get_device_info()
+
+    def _items(self) -> list[dict]:
+        """Return the scored recent meals list from the coordinator."""
+        if not self.coordinator.data:
+            return []
+        return self.coordinator.data.get("recent_meals", [])
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of distinct recent meal titles."""
+        return len(self._items())
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Expose the scored items + the meal calendar entity."""
+        return {
+            "items": self._items(),
             "meal_calendar_entity": self._conf.get("meal_calendar"),
         }

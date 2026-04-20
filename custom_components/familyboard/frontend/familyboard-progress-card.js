@@ -235,8 +235,63 @@ class FamilyBoardProgressCard extends HTMLElement {
       entity: "sensor.familyboard_progress",
     };
   }
+
+  static async getConfigElement() {
+    await customElements.whenDefined("ha-form");
+    return document.createElement("familyboard-progress-card-editor");
+  }
 }
 
+const PROGRESS_EDITOR_SCHEMA = [
+  {
+    name: "entity",
+    required: true,
+    selector: { entity: { domain: "sensor" } },
+  },
+];
+
+class FamilyBoardProgressCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._form = null;
+    this._config = {};
+    this._hass = null;
+  }
+
+  setConfig(config) {
+    this._config = config || {};
+    this._update();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._update();
+  }
+
+  _update() {
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.computeLabel = (s) => s.label || s.name;
+      this._form.schema = PROGRESS_EDITOR_SCHEMA;
+      this._form.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this.dispatchEvent(
+          new CustomEvent("config-changed", {
+            detail: { config: ev.detail.value },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      });
+      this.shadowRoot.appendChild(this._form);
+    }
+    if (this._hass) this._form.hass = this._hass;
+    this._form.data = this._config;
+  }
+}
+
+customElements.define("familyboard-progress-card-editor", FamilyBoardProgressCardEditor);
 customElements.define("familyboard-progress-card", FamilyBoardProgressCard);
 
 window.customCards = window.customCards || [];

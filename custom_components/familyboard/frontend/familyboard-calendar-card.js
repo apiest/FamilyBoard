@@ -39,12 +39,13 @@
 
 const DEFAULT_COLORS = ["#4A90D9", "#27AE60", "#F39C12", "#9B59B6", "#E74C3C", "#1ABC9C"];
 const VIEW_NL = { day: "Vandaag", week: "Week", "2weeks": "2 Weken", month: "Maand" };
+// Map stable select-state keys to internal view modes.
 const VIEW_FROM_SELECT = {
-  Vandaag: "day",
-  Morgen: "day",
-  Week: "week",
-  "2 Weken": "2weeks",
-  Maand: "month",
+  today: "day",
+  tomorrow: "day",
+  week: "week",
+  two_weeks: "2weeks",
+  month: "month",
 };
 
 class FamilyBoardCalendarCard extends HTMLElement {
@@ -145,15 +146,15 @@ class FamilyBoardCalendarCard extends HTMLElement {
 
   _anchorCurrentStartFor(viewSelectState) {
     const today = this._startOfDay(new Date());
-    if (viewSelectState === "Vandaag") {
+    if (viewSelectState === "today") {
       this._currentStart = today;
-    } else if (viewSelectState === "Morgen") {
+    } else if (viewSelectState === "tomorrow") {
       this._currentStart = this._addDays(today, 1);
-    } else if (viewSelectState === "Week" || viewSelectState === "2 Weken") {
+    } else if (viewSelectState === "week" || viewSelectState === "two_weeks") {
       // snap to monday of current week
       const dow = (today.getDay() + 6) % 7; // Mon=0
       this._currentStart = this._addDays(today, -dow);
-    } else if (viewSelectState === "Maand") {
+    } else if (viewSelectState === "month") {
       this._currentStart = new Date(today.getFullYear(), today.getMonth(), 1);
     }
     this._fetchKey = null;
@@ -1150,8 +1151,108 @@ class FamilyBoardCalendarCard extends HTMLElement {
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
     }[c]));
   }
+
+  static getStubConfig() {
+    return {
+      entities: [],
+      view: "day",
+      filter_entity: "select.familyboard_calendar",
+      view_entity: "select.familyboard_view",
+    };
+  }
+
+  static async getConfigElement() {
+    await customElements.whenDefined("ha-form");
+    return document.createElement("familyboard-calendar-card-editor");
+  }
 }
 
+const CALENDAR_EDITOR_SCHEMA = [
+  {
+    name: "entities",
+    selector: { entity: { domain: "calendar", multiple: true } },
+  },
+  {
+    name: "view",
+    selector: {
+      select: {
+        options: [
+          { value: "day", label: "Day" },
+          { value: "week", label: "Week" },
+          { value: "2weeks", label: "2 Weeks" },
+          { value: "month", label: "Month" },
+        ],
+      },
+    },
+  },
+  { name: "filter_entity", selector: { entity: { domain: "select" } } },
+  { name: "view_entity", selector: { entity: { domain: "select" } } },
+  { name: "weather_entity", selector: { entity: { domain: "weather" } } },
+  { name: "reminders_entity", selector: { entity: {} } },
+  { name: "config_entity", selector: { entity: { domain: "sensor" } } },
+  { name: "show_now_indicator", selector: { boolean: {} } },
+  { name: "show_navigation", selector: { boolean: {} } },
+  { name: "start_hour", selector: { number: { min: 0, max: 23, mode: "box" } } },
+  { name: "end_hour", selector: { number: { min: 1, max: 24, mode: "box" } } },
+  {
+    name: "slot_minutes",
+    selector: {
+      select: {
+        options: [
+          { value: 15, label: "15" },
+          { value: 20, label: "20" },
+          { value: 30, label: "30" },
+          { value: 60, label: "60" },
+        ],
+      },
+    },
+  },
+  { name: "row_height", selector: { number: { min: 12, max: 80, mode: "box" } } },
+  { name: "locale", selector: { text: {} } },
+];
+
+class FamilyBoardCalendarCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._form = null;
+    this._config = {};
+    this._hass = null;
+  }
+
+  setConfig(config) {
+    this._config = config || {};
+    this._update();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._update();
+  }
+
+  _update() {
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.computeLabel = (s) => s.label || s.name;
+      this._form.schema = CALENDAR_EDITOR_SCHEMA;
+      this._form.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this.dispatchEvent(
+          new CustomEvent("config-changed", {
+            detail: { config: ev.detail.value },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      });
+      this.shadowRoot.appendChild(this._form);
+    }
+    if (this._hass) this._form.hass = this._hass;
+    this._form.data = this._config;
+  }
+}
+
+customElements.define("familyboard-calendar-card-editor", FamilyBoardCalendarCardEditor);
 customElements.define("familyboard-calendar-card", FamilyBoardCalendarCard);
 
 window.customCards = window.customCards || [];
@@ -1165,8 +1266,16 @@ if (!window.customCards.find((c) => c.type === "familyboard-calendar-card")) {
   });
 }
 
+const FB_VERSION = (() => {
+  try {
+    return new URL(import.meta.url).searchParams.get("v") || "dev";
+  } catch (_e) {
+    return "dev";
+  }
+})();
+
 console.info(
-  "%c FAMILYBOARD-CALENDAR-CARD %c v0.1.0-phase1 ",
+  `%c FAMILYBOARD-CALENDAR-CARD %c v${FB_VERSION} `,
   "color:white;background:#4A90D9;font-weight:bold;",
   "color:#4A90D9;background:transparent;"
 );

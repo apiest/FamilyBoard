@@ -52,13 +52,44 @@ SNOOZE_STEP_MIN = 15
 SNOOZE_LARGE_STEP_MIN = 60
 SNOOZE_MAX_MIN = 240
 
-# View / filter options (Dutch values; full i18n is a follow-up phase)
-VIEW_OPTIONS = ["Vandaag", "Morgen", "Week", "2 Weken", "Maand"]
-LAYOUT_OPTIONS = ["Lijst", "Agenda"]
+# View / filter options. Stable, language-neutral keys; user-visible labels
+# come from translations (entity.select.<key>.state.<key>).
+VIEW_OPTIONS = ["today", "tomorrow", "week", "two_weeks", "month"]
+LAYOUT_OPTIONS = ["list", "agenda"]
 ALLES = "Alles"
+# Legacy Dutch state values from earlier releases — restored states are mapped
+# into the new keys to avoid breaking existing installs.
+LEGACY_VIEW_STATE_MAP: dict[str, str] = {
+    "Vandaag": "today",
+    "Morgen": "tomorrow",
+    "Week": "week",
+    "2 Weken": "two_weeks",
+    "Maand": "month",
+}
+LEGACY_LAYOUT_STATE_MAP: dict[str, str] = {
+    "Lijst": "list",
+    "Agenda": "agenda",
+}
 
 # Meal planning (Phase 1: calendar-backed display)
 MEALS_ENTITY = "sensor.familyboard_meals"
+MEALS_UNPLANNED_ENTITY = "binary_sensor.familyboard_meals_unplanned"
+RECENT_MEALS_ENTITY = "sensor.familyboard_recent_meals"
 MEAL_DEFAULT_HOUR = 18
 MEAL_LOOKAHEAD_DAYS = 7
 MEAL_PLACEHOLDER = "Nog niet gepland"
+# Titles that mean "deliberately no meal" — count as planned, render 🚫.
+MEAL_EMPTY_TITLES = frozenset({"", "-", "--", "?", "geen", "none", "n/a"})
+
+# Phase 2: recent meals memory + scoring
+MEAL_RECENT_WINDOW_DAYS = 90
+MEAL_PICKER_LIMIT = 12
+# Penalty anchors: days_since_last_use → penalty subtracted from use count.
+# Linear interpolation between anchors; 30+ days → 0.
+MEAL_PENALTY_ANCHORS: tuple[tuple[int, float], ...] = (
+    (0, 10.0),
+    (3, 6.0),
+    (7, 3.0),
+    (14, 1.0),
+    (30, 0.0),
+)
