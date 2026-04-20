@@ -183,6 +183,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def _async_startup(_event: Any = None) -> None:
         """Run frontend + entity wiring + initial refresh once HA is ready."""
         await _async_register_frontend(hass)
+        await _async_seed_dashboard(hass)
         await _async_link_entities(hass, entry)
         await reminder_manager.async_start()
         await trash_chore_manager.async_start()
@@ -232,11 +233,25 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_link_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Ensure all FB entities are linked to our device + this entry."""
+    """Ensure all FB entities are linked to our device + this entry.
+
+    Also migrates entity_ids that earlier versions generated from
+    translation_key (e.g. ``select.familyboard_calendar_filter``) to the
+    canonical ids the dashboard / frontend cards reference (e.g.
+    ``select.familyboard_calendar``).
+    """
     dev_reg = dr.async_get(hass)
     device = dev_reg.async_get_device(identifiers={DEVICE_IDENTIFIER})
     if device is None:
         return
+
+    # unique_id -> desired entity_id for entities where we pin an object_id.
+    canonical_ids: dict[str, str] = {
+        "familyboard_calendar": "select.familyboard_calendar",
+        "familyboard_view": "select.familyboard_view",
+        "familyboard_layout": "select.familyboard_layout",
+        "familyboard_event_member": "select.familyboard_event_member",
+    }
 
     ent_reg = er.async_get(hass)
     for ent in list(ent_reg.entities.values()):
@@ -249,6 +264,13 @@ async def _async_link_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
             updates["config_entry_id"] = entry.entry_id
         if updates:
             ent_reg.async_update_entity(ent.entity_id, **updates)
+
+        desired = canonical_ids.get(ent.unique_id)
+        if desired and ent.entity_id != desired and ent_reg.async_get(desired) is None:
+            _LOGGER.info(
+                "Migrating FamilyBoard entity_id %s -> %s", ent.entity_id, desired
+            )
+            ent_reg.async_update_entity(ent.entity_id, new_entity_id=desired)
 
 
 # ---------------------------------------------------------------------------
@@ -325,9 +347,112 @@ async def _async_sync_lovelace_resources(hass: HomeAssistant) -> None:
             )
 
 
+_DASHBOARD_URL_PATH = "familyboard"
+_DASHBOARD_TITLE = "FamilyBoard"
+_DASHBOARD_ICON = "mdi:home-heart"
+
+
+async def _async_seed_dashboard(hass: HomeAssistant) -> None:
+    """Seed a storage-mode Lovelace dashboard for FamilyBoard, once.
+
+    Creates a sidebar entry that renders via the ``custom:familyboard``
+    strategy. The user can edit the dashboard freely afterwards; we only
+    create it if no dashboard with our ``url_path`` exists yet.
+    """
+    try:
+        from homeassistant.components import frontend
+        from homeassistant.components.lovelace import dashboard as lovelace_dashboard
+        from homeassistant.components.lovelace.const import LOVELACE_DATA
+    except ImportError:
+        _LOGGER.debug("Lovelace not available; skipping dashboard seed")
+        return
+
+    lovelace_data = hass.data.get(LOVELACE_DATA)
+    if lovelace_data is None:
+        _LOGGER.debug("Lovelace data not initialised; skipping dashboard seed")
+        return
+
+    # If we already registered (this run or a previous one), nothing to do.
+    if _DASHBOARD_URL_PATH in lovelace_data.dashboards:
+        return
+
+    collection = lovelace_dashboard.DashboardsCollection(hass)
+    try:
+        await collection.async_load()
+    except HomeAssistantError as err:
+        _LOGGER.warning("Could not load Lovelace dashboards collection: %s", err)
+        return
+
+    already_persisted = any(
+        item.get("url_path") == _DASHBOARD_URL_PATH for item in collection.async_items()
+    )
+
+    if not already_persisted:
+        try:
+            await collection.async_create_item(
+                {
+                    "allow_single_word": True,
+                    "icon": _DASHBOARD_ICON,
+                    "title": _DASHBOARD_TITLE,
+                    "url_path": _DASHBOARD_URL_PATH,
+                    "show_in_sidebar": True,
+                    "require_admin": False,
+                    "mode": "storage",
+                }
+            )
+        except (HomeAssistantError, vol.Invalid) as err:
+            _LOGGER.warning("Could not create FamilyBoard dashboard: %s", err)
+            return
+
+    # Wire up the in-memory LovelaceStorage + sidebar panel ourselves, since
+    # the lovelace component's collection listener only runs for changes made
+    # to its own collection instance during initial setup.
+    item = next(
+        (
+            i
+            for i in collection.async_items()
+            if i.get("url_path") == _DASHBOARD_URL_PATH
+        ),
+        None,
+    )
+    if item is None:
+        return
+
+    storage = lovelace_dashboard.LovelaceStorage(hass, item)
+    lovelace_data.dashboards[_DASHBOARD_URL_PATH] = storage
+
+    # Seed the dashboard config with our strategy on first creation only.
+    if not already_persisted:
+        try:
+            await storage.async_save(
+                {"strategy": {"type": "custom:familyboard"}, "title": _DASHBOARD_TITLE}
+            )
+        except HomeAssistantError as err:
+            _LOGGER.warning("Could not save FamilyBoard dashboard config: %s", err)
+
+    try:
+        frontend.async_register_built_in_panel(
+            hass,
+            "lovelace",
+            sidebar_title=_DASHBOARD_TITLE,
+            sidebar_icon=_DASHBOARD_ICON,
+            frontend_url_path=_DASHBOARD_URL_PATH,
+            require_admin=False,
+            config={"mode": "storage"},
+            update=True,
+        )
+        _LOGGER.info("Registered FamilyBoard dashboard at /%s", _DASHBOARD_URL_PATH)
+    except ValueError as err:
+        _LOGGER.debug("FamilyBoard dashboard panel already present: %s", err)
+
+
 async def _async_check_lovelace_dependencies(hass: HomeAssistant) -> None:
     """Warn if required HACS frontend deps (mushroom, card-mod) are missing."""
-    required = {"mushroom": "Mushroom Cards", "card-mod": "card-mod"}
+    required = {
+        "mushroom": "Mushroom Cards",
+        "card-mod": "card-mod",
+        "bubble-card": "Bubble Card",
+    }
     found: set[str] = set()
 
     lovelace_data = hass.data.get("lovelace")

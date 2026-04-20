@@ -42,6 +42,7 @@ async def async_setup_entry(
         icon="mdi:filter-variant",
         options=[ALLES, *member_names],
         default=ALLES,
+        object_id="familyboard_calendar",
     )
     view = FamilyBoardSelect(
         unique_id="familyboard_view",
@@ -49,6 +50,7 @@ async def async_setup_entry(
         icon="mdi:eye",
         options=VIEW_OPTIONS,
         default="Week",
+        object_id="familyboard_view",
     )
     layout = FamilyBoardSelect(
         unique_id="familyboard_layout",
@@ -56,6 +58,7 @@ async def async_setup_entry(
         icon="mdi:view-dashboard-variant",
         options=LAYOUT_OPTIONS,
         default="Lijst",
+        object_id="familyboard_layout",
     )
     event_member = FamilyBoardSelect(
         unique_id="familyboard_event_member",
@@ -63,6 +66,7 @@ async def async_setup_entry(
         icon="mdi:account",
         options=member_names,
         default=member_names[0] if member_names else None,
+        object_id="familyboard_event_member",
     )
     event_calendar = FamilyBoardEventCalendarSelect(
         members=members,
@@ -96,6 +100,7 @@ class FamilyBoardSelect(SelectEntity, RestoreEntity):
         icon: str,
         options: list[str],
         default: str | None,
+        object_id: str | None = None,
     ) -> None:
         """Initialize the select with metadata, options and default value."""
         self._attr_unique_id = unique_id
@@ -106,6 +111,11 @@ class FamilyBoardSelect(SelectEntity, RestoreEntity):
             default if default in options else (options[0] if options else None)
         )
         self._attr_device_info = get_device_info()
+        # Pin the entity_id so it matches the constants the dashboard uses,
+        # regardless of what the translation key would otherwise produce.
+        if object_id:
+            self._attr_suggested_object_id = object_id
+            self.entity_id = f"select.{object_id}"
 
     async def async_added_to_hass(self) -> None:
         """Restore the previously selected option on startup."""

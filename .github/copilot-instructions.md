@@ -71,6 +71,42 @@ survive cache-busting hashes.
 - Test deps: `requirements_test.txt`.
 - Run: `pytest` from repo root.
 
+### Manual / live testing — use the dev container
+
+When verifying new functionality against a real HA instance, use the
+repo's dev container instead of deploying to the production Pi.
+
+- `.devcontainer.json` + `scripts/setup` install
+  `requirements-dev.txt` (HA + ruff + pytest).
+- `scripts/develop` boots HA on <http://localhost:8123> with this
+  repo's `custom_components/familyboard` on `PYTHONPATH` (no bind
+  mounts, no symlinks).
+- HA config lives in `<repo>/config/`; `config/.storage/` is
+  git-ignored and persists onboarding + UI-created entries across
+  rebuilds.
+- First boot: create owner → add Local Calendar (`Dev A`, `Dev B`)
+  and Local To-do (`Dev A`, `Dev B`, `Trash`) via the UI → add the
+  **FamilyBoard** integration and wire the members through the
+  options flow. End-user flow only — no helper YAML.
+- Iteration: Python edits → restart HA from the UI; JS edits →
+  hard-reload (`Ctrl+Shift+R`) and tick *Bypass for network* in
+  DevTools → Application → Service Workers if a card goes missing.
+
+When you add or change user-visible behavior, walk through the
+relevant UI flow in this dev HA before considering the task done.
+
+### Files to keep in sync when behavior changes
+
+If a change affects how a contributor sets up or runs the dev HA,
+update **all** of these together:
+
+- `.devcontainer.json` — extensions, features, `postCreateCommand`.
+- `scripts/setup` / `scripts/develop` / `scripts/lint`.
+- `requirements-dev.txt` — HA and tooling pins.
+- `config/configuration.yaml` — bootstrap config (kept minimal; no
+  `familyboard:` block, no stub entities).
+- `README.md` *Development → Dev container* section.
+- This file (`Manual / live testing` above).
 ## Deploy
 
 ```bash

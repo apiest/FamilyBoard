@@ -55,11 +55,23 @@ def _bool() -> selector.Selector:
     return selector.BooleanSelector()
 
 
-def _select(options: list[str], multiple: bool = False) -> selector.Selector:
-    """Return a dropdown selector populated with ``options``."""
+def _select(
+    options: list[str] | list[tuple[str, str]],
+    multiple: bool = False,
+) -> selector.Selector:
+    """Return a dropdown selector populated with ``options``.
+
+    Items may be plain strings or ``(value, label)`` tuples for friendly labels.
+    """
+    normalized: list[Any] = [
+        selector.SelectOptionDict(value=opt[0], label=opt[1])
+        if isinstance(opt, tuple)
+        else opt
+        for opt in options
+    ]
     return selector.SelectSelector(
         selector.SelectSelectorConfig(
-            options=options,
+            options=normalized,
             multiple=multiple,
             mode=selector.SelectSelectorMode.DROPDOWN,
         )
@@ -112,7 +124,7 @@ class FamilyBoardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
         """Return the options flow for an existing FamilyBoard entry."""
-        return FamilyBoardOptionsFlow(config_entry)
+        return FamilyBoardOptionsFlow()
 
 
 def _normalize_options(raw: dict[str, Any]) -> dict[str, Any]:
@@ -142,20 +154,30 @@ class FamilyBoardOptionsFlow(config_entries.OptionsFlow):
     menu.
     """
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Snapshot the current options into a working copy for editing."""
-        self.config_entry = config_entry
-        self._options: dict[str, Any] = copy.deepcopy(
-            dict(config_entry.options) or default_options()
-        )
-        for key in ("members", "trash", "shared_calendars", "shared_chores"):
-            self._options.setdefault(key, [])
+    def __init__(self) -> None:
+        """Initialise editing cursors; options are snapshotted lazily.
+
+        ``self.config_entry`` is a read-only property populated by Home
+        Assistant after construction, so we cannot read entry options here.
+        """
+        self._options_cache: dict[str, Any] | None = None
         # Editing cursors
         self._editing_member_index: int | None = None
         self._editing_extra_index: int | None = None
         self._editing_trash_index: int | None = None
         self._editing_shared_cal_index: int | None = None
         self._editing_shared_chore_index: int | None = None
+
+    @property
+    def _options(self) -> dict[str, Any]:
+        """Return the working options dict, snapshotting on first access."""
+        if self._options_cache is None:
+            self._options_cache = copy.deepcopy(
+                dict(self.config_entry.options) or default_options()
+            )
+            for key in ("members", "trash", "shared_calendars", "shared_chores"):
+                self._options_cache.setdefault(key, [])
+        return self._options_cache
 
     # ------------------------------------------------------------------
     # Top-level menu
@@ -192,7 +214,11 @@ class FamilyBoardOptionsFlow(config_entries.OptionsFlow):
         """List members and let the user add or pick one to edit."""
         members = self._options["members"]
         labels = [f"{i}: {m['name']}" for i, m in enumerate(members)]
-        choices = ["__add__", *labels, "__back__"]
+        choices: list[str | tuple[str, str]] = [
+            ("__add__", "➕ Add new member"),  # noqa: RUF001
+            *labels,
+            ("__back__", "← Back"),
+        ]
 
         if user_input is not None:
             choice = user_input["action"]
@@ -233,7 +259,16 @@ class FamilyBoardOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="member_action",
             data_schema=vol.Schema(
-                {vol.Required("action"): _select(["edit", "extras", "remove", "back"])}
+                {
+                    vol.Required("action"): _select(
+                        [
+                            ("edit", "✏️ Edit"),
+                            ("extras", "📅 Extra calendars"),
+                            ("remove", "🗑️ Remove"),
+                            ("back", "← Back"),
+                        ]
+                    )
+                }
             ),
             description_placeholders={"name": member["name"]},
         )
@@ -323,7 +358,11 @@ class FamilyBoardOptionsFlow(config_entries.OptionsFlow):
         assert idx is not None
         extras = self._options["members"][idx].setdefault("extra_calendars", [])
         labels = [f"{i}: {e.get('label') or e['entity']}" for i, e in enumerate(extras)]
-        choices = ["__add__", *labels, "__back__"]
+        choices: list[str | tuple[str, str]] = [
+            ("__add__", "➕ Add new extra calendar"),  # noqa: RUF001
+            *labels,
+            ("__back__", "← Back"),
+        ]
 
         if user_input is not None:
             choice = user_input["action"]
@@ -406,7 +445,11 @@ class FamilyBoardOptionsFlow(config_entries.OptionsFlow):
             f"{i}: {t.get('label') or t['type']} ({t['sensor']})"
             for i, t in enumerate(items)
         ]
-        choices = ["__add__", *labels, "__back__"]
+        choices: list[str | tuple[str, str]] = [
+            ("__add__", "➕ Add new trash collection"),  # noqa: RUF001
+            *labels,
+            ("__back__", "← Back"),
+        ]
 
         if user_input is not None:
             choice = user_input["action"]
@@ -487,7 +530,11 @@ class FamilyBoardOptionsFlow(config_entries.OptionsFlow):
         """List shared calendars."""
         items = self._options["shared_calendars"]
         labels = [f"{i}: {c.get('name') or c['entity']}" for i, c in enumerate(items)]
-        choices = ["__add__", *labels, "__back__"]
+        choices: list[str | tuple[str, str]] = [
+            ("__add__", "➕ Add new shared calendar"),  # noqa: RUF001
+            *labels,
+            ("__back__", "← Back"),
+        ]
 
         if user_input is not None:
             choice = user_input["action"]
@@ -565,7 +612,11 @@ class FamilyBoardOptionsFlow(config_entries.OptionsFlow):
         """List shared chores."""
         items = self._options["shared_chores"]
         labels = [f"{i}: {c.get('name') or c['entity']}" for i, c in enumerate(items)]
-        choices = ["__add__", *labels, "__back__"]
+        choices: list[str | tuple[str, str]] = [
+            ("__add__", "➕ Add new shared chore"),  # noqa: RUF001
+            *labels,
+            ("__back__", "← Back"),
+        ]
 
         if user_input is not None:
             choice = user_input["action"]

@@ -1,0 +1,19 @@
+# Ignore everything HA writes at runtime; keep only files we explicitly
+# track (e.g. configuration.yaml, packages/, dashboards/).
+*
+!.gitignore
+!configuration.yaml
+!packages/
+!packages/**
+!dashboards/
+!dashboards/**
+.storage/
+deps/
+tts/
+blueprints/
+home-assistant.log*
+home-assistant_v2.db*
+*.db-shm
+*.db-wal
+*.pid
+secrets.yaml

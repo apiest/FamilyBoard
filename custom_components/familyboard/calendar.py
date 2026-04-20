@@ -138,8 +138,9 @@ async def async_setup_entry(
         )
     )
 
-    if conf.get("trash"):
-        entities.append(FamilyBoardTrashCalendar(coordinator, conf["trash"]))
+    # Always expose the trash calendar so frontend cards can reference it
+    # unconditionally. With no trash sensors configured it simply has no events.
+    entities.append(FamilyBoardTrashCalendar(coordinator, conf.get("trash", [])))
 
     async_add_entities(entities, True)
 
