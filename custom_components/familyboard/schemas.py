@@ -70,6 +70,7 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Optional("shared_chores", default=[]): vol.All(
             cv.ensure_list, [SHARED_CHORE_SCHEMA]
         ),
+        vol.Optional("meal_calendar"): cv.entity_id,
     }
 )
 

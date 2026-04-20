@@ -2,12 +2,14 @@
 
 - `sensor.familyboard_chores`     — combined chore list with datetime + uid
 - `sensor.familyboard_compliment` — time-of-day greeting
+- `sensor.familyboard_meals`      — today's meal + upcoming week
 - `sensor.familyboard_members`    — member metadata for cards
 - `sensor.familyboard_progress`   — per-member chore progress
 """
 
 from __future__ import annotations
 
+from datetime import timedelta
 import logging
 
 from homeassistant.components.sensor import SensorEntity
@@ -20,7 +22,12 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, get_device_info
+from .const import (
+    DOMAIN,
+    MEAL_LOOKAHEAD_DAYS,
+    MEAL_PLACEHOLDER,
+    get_device_info,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,6 +45,7 @@ async def async_setup_entry(
         [
             FamilyBoardChoresSensor(coordinator, conf),
             FamilyBoardComplimentSensor(),
+            FamilyBoardMealsSensor(coordinator, conf),
             FamilyBoardMembersSensor(coordinator),
             FamilyBoardProgressSensor(coordinator),
         ],
@@ -185,3 +193,73 @@ class FamilyBoardProgressSensor(CoordinatorEntity, SensorEntity):
                 }
             )
         return {"members": members}
+
+
+class FamilyBoardMealsSensor(CoordinatorEntity, SensorEntity):
+    """Sensor exposing tonight's meal + the upcoming week of meals.
+
+    State is the title of today's meal (or ``MEAL_PLACEHOLDER`` when
+    nothing is planned). Attributes expose ``tonight`` (today's meal
+    dict or ``None``), ``week`` (list of one entry per upcoming day,
+    each with ``date``, ``weekday`` and ``meal``), and
+    ``meal_calendar_entity`` so cards can call ``calendar.create_event``
+    against the right target.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "meals"
+
+    def __init__(self, coordinator: DataUpdateCoordinator, conf: dict) -> None:
+        """Store the coordinator and resolved config."""
+        super().__init__(coordinator)
+        self._conf = conf
+        self._attr_unique_id = "familyboard_meals"
+        self._attr_icon = "mdi:silverware-fork-knife"
+        self._attr_device_info = get_device_info()
+
+    def _meals(self) -> list[dict]:
+        """Return the upcoming meals list from the coordinator."""
+        if not self.coordinator.data:
+            return []
+        return self.coordinator.data.get("meals", [])
+
+    def _tonight(self) -> dict | None:
+        """Return today's first meal entry, if any."""
+        today_iso = dt_util.now().date().isoformat()
+        for meal in self._meals():
+            if meal.get("date") == today_iso:
+                return meal
+        return None
+
+    @property
+    def native_value(self) -> str:
+        """Return tonight's meal title or the empty placeholder."""
+        tonight = self._tonight()
+        if tonight and tonight.get("title"):
+            return tonight["title"]
+        return MEAL_PLACEHOLDER
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Expose tonight + the upcoming week as a flat list for cards."""
+        meals_by_date: dict[str, dict] = {}
+        for meal in self._meals():
+            meals_by_date.setdefault(meal["date"], meal)
+
+        today = dt_util.now().date()
+        week: list[dict] = []
+        for offset in range(MEAL_LOOKAHEAD_DAYS):
+            day = today + timedelta(days=offset)
+            iso = day.isoformat()
+            week.append(
+                {
+                    "date": iso,
+                    "weekday": day.strftime("%A"),
+                    "meal": meals_by_date.get(iso),
+                }
+            )
+        return {
+            "tonight": self._tonight(),
+            "week": week,
+            "meal_calendar_entity": self._conf.get("meal_calendar"),
+        }

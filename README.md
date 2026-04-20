@@ -94,6 +94,7 @@ familyboard:
     - entity: todo.groceries
       members: [Person_1, Person_2]
       name: Groceries
+  meal_calendar: calendar.meals
 ```
 
 ### Member options

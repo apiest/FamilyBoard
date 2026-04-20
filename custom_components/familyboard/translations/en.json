@@ -117,6 +117,7 @@
     "sensor": {
       "chores": { "name": "Chores" },
       "compliment": { "name": "Greeting" },
+      "meals": { "name": "Meals" },
       "members": { "name": "Members" },
       "progress": { "name": "Progress" }
     },

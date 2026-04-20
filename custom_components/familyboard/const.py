@@ -56,3 +56,9 @@ SNOOZE_MAX_MIN = 240
 VIEW_OPTIONS = ["Vandaag", "Morgen", "Week", "2 Weken", "Maand"]
 LAYOUT_OPTIONS = ["Lijst", "Agenda"]
 ALLES = "Alles"
+
+# Meal planning (Phase 1: calendar-backed display)
+MEALS_ENTITY = "sensor.familyboard_meals"
+MEAL_DEFAULT_HOUR = 18
+MEAL_LOOKAHEAD_DAYS = 7
+MEAL_PLACEHOLDER = "Nog niet gepland"

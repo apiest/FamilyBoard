@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Meal planning Phase 1: optional `meal_calendar` config key, new
+  `sensor.familyboard_meals` exposing tonight's meal and a 7-day week
+  attribute, plus a "Vanavond" + week-strip + "Maaltijd toevoegen"
+  block in the dashboard.
+
 ## [0.1.0] - 2026-04-20
 
 Initial tracked release.

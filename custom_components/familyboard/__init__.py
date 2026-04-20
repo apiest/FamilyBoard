@@ -45,6 +45,7 @@ from .const import (
     EVENT_MEMBER_ENTITY,
     EVENT_START_ENTITY,
     EVENT_TITLE_ENTITY,
+    MEAL_LOOKAHEAD_DAYS,
     SCAN_INTERVAL_MINUTES,
     TASK_IDENTIFIER,
     VIEW_ENTITY,
@@ -886,4 +887,49 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
             except HomeAssistantError:
                 _LOGGER.exception("Reminder sync failed")
 
+        result["meals"] = await self._fetch_meals(now)
+
         return result
+
+    async def _fetch_meals(self, now: _dt) -> list[dict]:
+        """Fetch upcoming meals from the configured ``meal_calendar``.
+
+        Returns a list of ``{date, title, start, end, description, uid,
+        all_day}`` ordered by start. Empty list when no meal calendar is
+        configured or the calendar entity yields nothing.
+        """
+        meal_entity = self.conf.get("meal_calendar")
+        if not meal_entity:
+            return []
+
+        today = now.date()
+        window_start = _dt.combine(today, time.min, tzinfo=now.tzinfo)
+        window_end = _dt.combine(
+            today + timedelta(days=MEAL_LOOKAHEAD_DAYS),
+            time.max,
+            tzinfo=now.tzinfo,
+        )
+        events = await self._fetch_events(
+            meal_entity, window_start.isoformat(), window_end.isoformat()
+        )
+
+        meals: list[dict] = []
+        for ev in events:
+            start = ev.get("start") or ""
+            end = ev.get("end") or ""
+            date = start[:10] if start else ""
+            if not date:
+                continue
+            meals.append(
+                {
+                    "date": date,
+                    "title": ev.get("summary", ""),
+                    "start": start,
+                    "end": end,
+                    "description": ev.get("description", ""),
+                    "uid": ev.get("uid", ""),
+                    "all_day": "T" not in start,
+                }
+            )
+        meals.sort(key=lambda m: m["start"])
+        return meals
