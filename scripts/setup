@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Install dev/test dependencies for the FamilyBoard custom component.
+# Runs as the devcontainer postCreateCommand and is also safe to run on
+# a host with a virtualenv already activated.
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+python3 -m pip install --upgrade pip
+python3 -m pip install --requirement requirements-dev.txt
+
+# Install HACS into the dev HA config so it survives container rebuilds.
+# config/custom_components/ is git-ignored, so this only affects the dev
+# container. Skip if HACS is already present.
+if [[ ! -d config/custom_components/hacs ]]; then
+    echo "Installing HACS into config/custom_components/hacs ..."
+    wget -q -O - https://get.hacs.xyz | bash -s -- --path config
+fi

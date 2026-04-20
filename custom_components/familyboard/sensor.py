@@ -14,7 +14,10 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+)
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, get_device_info
@@ -48,7 +51,8 @@ class FamilyBoardChoresSensor(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "chores"
 
-    def __init__(self, coordinator, conf: dict) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator, conf: dict) -> None:
+        """Store the coordinator and resolved config."""
         super().__init__(coordinator)
         self._conf = conf
         self._attr_unique_id = "familyboard_chores"
@@ -57,13 +61,16 @@ class FamilyBoardChoresSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> int:
+        """Return the number of chore items currently aggregated."""
         return len(self._get_items())
 
     @property
     def extra_state_attributes(self) -> dict:
+        """Expose the full chore list as an attribute for cards."""
         return {"items": self._get_items()}
 
     def _get_items(self) -> list[dict]:
+        """Return the sorted aggregated chore list from the coordinator."""
         if not self.coordinator.data:
             return []
         return self.coordinator.data.get("all_chores_sorted", [])
@@ -76,12 +83,14 @@ class FamilyBoardComplimentSensor(SensorEntity):
     _attr_translation_key = "compliment"
 
     def __init__(self) -> None:
+        """Initialize the compliment sensor."""
         self._attr_unique_id = "familyboard_compliment_integrated"
         self._attr_icon = "mdi:hand-wave"
         self._attr_device_info = get_device_info()
 
     @property
     def native_value(self) -> str:
+        """Return a Dutch greeting based on the current hour."""
         hour = dt_util.now().hour
         if hour < 6:
             return "Slaap lekker! \U0001f319"
@@ -93,6 +102,7 @@ class FamilyBoardComplimentSensor(SensorEntity):
 
     @property
     def should_poll(self) -> bool:
+        """Poll periodically so the greeting updates as the day progresses."""
         return True
 
 
@@ -102,7 +112,8 @@ class FamilyBoardMembersSensor(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "members"
 
-    def __init__(self, coordinator) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator) -> None:
+        """Store the coordinator reference."""
         super().__init__(coordinator)
         self._attr_unique_id = "familyboard_members"
         self._attr_icon = "mdi:account-group"
@@ -110,12 +121,14 @@ class FamilyBoardMembersSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> int:
+        """Return the number of configured members."""
         if not self.coordinator.data:
             return 0
         return len(self.coordinator.data.get("members_meta", []))
 
     @property
     def extra_state_attributes(self) -> dict:
+        """Expose member metadata + shared calendars/chores for cards."""
         if not self.coordinator.data:
             return {"members": [], "shared_calendars": [], "shared_chores": []}
         return {
@@ -131,7 +144,8 @@ class FamilyBoardProgressSensor(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "progress"
 
-    def __init__(self, coordinator) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator) -> None:
+        """Store the coordinator reference."""
         super().__init__(coordinator)
         self._attr_unique_id = "familyboard_progress"
         self._attr_icon = "mdi:progress-check"
@@ -139,6 +153,7 @@ class FamilyBoardProgressSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> int:
+        """Return the total number of completed chores across members."""
         if not self.coordinator.data:
             return 0
         progress = self.coordinator.data.get("progress", {})
@@ -146,6 +161,7 @@ class FamilyBoardProgressSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
+        """Expose per-member completion percentages for the progress card."""
         if not self.coordinator.data:
             return {"members": []}
         progress = self.coordinator.data.get("progress", {})

@@ -33,11 +33,16 @@ async def async_setup_entry(
 
 
 class FamilyBoardText(TextEntity, RestoreEntity):
+    """Text entity replacing an `input_text` helper."""
+
     _attr_should_poll = False
     _attr_has_entity_name = True
     _attr_mode = "text"
 
-    def __init__(self, unique_id: str, translation_key: str, icon: str, max_value: int) -> None:
+    def __init__(
+        self, unique_id: str, translation_key: str, icon: str, max_value: int
+    ) -> None:
+        """Initialize the text entity with metadata and an empty value."""
         self._attr_unique_id = unique_id
         self._attr_translation_key = translation_key
         self._attr_icon = icon
@@ -46,11 +51,13 @@ class FamilyBoardText(TextEntity, RestoreEntity):
         self._attr_device_info = get_device_info()
 
     async def async_added_to_hass(self) -> None:
+        """Restore the previous value on startup."""
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
         if last and last.state not in (None, "unknown", "unavailable"):
             self._attr_native_value = last.state
 
     async def async_set_value(self, value: str) -> None:
+        """Update the stored value."""
         self._attr_native_value = value or ""
         self.async_write_ha_state()

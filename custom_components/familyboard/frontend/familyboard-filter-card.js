@@ -1,9 +1,11 @@
 /**
  * FamilyBoard Filter Card
  *
- * Dynamically renders a row of mushroom-chips that read members from
- * `sensor.familyboard_members` and write the selection to
- * `select.familyboard_calendar`.
+ * Renders a row of member filter chips via `mushroom-chips-card`, styled
+ * with `card-mod`. Reads members from `sensor.familyboard_members` and
+ * writes the selection to `select.familyboard_calendar`.
+ *
+ * Requires HACS plugins: Mushroom Cards, card-mod.
  *
  * Config:
  *   type: custom:familyboard-filter-card
@@ -16,6 +18,7 @@
 const DEFAULT_FILTER = "select.familyboard_calendar";
 const DEFAULT_MEMBERS = "sensor.familyboard_members";
 const ALLES_LABEL = "Alles";
+const ALLES_COLOR = "#8c8c8c";
 
 class FamilyBoardFilterCard extends HTMLElement {
   constructor() {
@@ -75,8 +78,8 @@ class FamilyBoardFilterCard extends HTMLElement {
 
   static getStubConfig() {
     return {
-      filter_entity: "select.familyboard_calendar",
-      members_entity: "sensor.familyboard_members",
+      filter_entity: DEFAULT_FILTER,
+      members_entity: DEFAULT_MEMBERS,
       show_alles: true,
       extra_chips: [],
     };
@@ -91,64 +94,72 @@ class FamilyBoardFilterCard extends HTMLElement {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
+  _chipStyle({ color, selected }) {
+    // For mushroom template chips card-mod's top-level `style` is applied
+    // inside the chip element itself; `ha-card` is the pill background.
+    // Setting it on `:host` doesn't paint, and `mushroom-chip$ .chip`
+    // doesn't exist on template chips, which is why earlier attempts
+    // never highlighted the selected chip.
+    if (!selected) return "";
+    const bg = this._hexToRgba(color, 0.45);
+    const border = this._hexToRgba(color, 0.9);
+    return `
+      ha-card {
+        background: ${bg} !important;
+        border: 1.5px solid ${border} !important;
+        transition: background-color 140ms ease, border-color 140ms ease;
+      }
+    `;
+  }
+
+  _buildChip({ name, color, picture, icon, selected }) {
+    const filterEntity = this._config.filter_entity;
+    const chip = {
+      type: "template",
+      content: name,
+      tap_action: {
+        action: "perform-action",
+        perform_action: "select.select_option",
+        target: { entity_id: filterEntity },
+        data: { option: name },
+      },
+      card_mod: { style: this._chipStyle({ color, selected }) },
+    };
+    if (picture) {
+      chip.picture = picture;
+    } else {
+      chip.icon = icon || "mdi:account";
+      chip.icon_color = color;
+    }
+    return chip;
+  }
+
   _buildChips(members, currentFilter) {
     const chips = [];
-    const filterEntity = this._config.filter_entity;
-
     if (this._config.show_alles) {
-      chips.push({
-        type: "template",
-        icon: "mdi:account-group",
-        content: ALLES_LABEL,
-        tap_action: {
-          action: "perform-action",
-          perform_action: "select.select_option",
-          target: { entity_id: filterEntity },
-          data: { option: ALLES_LABEL },
-        },
-        card_mod: {
-          style: `ha-card {
-            --chip-background: ${
-              currentFilter === ALLES_LABEL
-                ? "rgba(140, 140, 140, 0.35)"
-                : "var(--ha-card-background)"
-            };
-          }`,
-        },
-      });
+      chips.push(
+        this._buildChip({
+          name: ALLES_LABEL,
+          color: ALLES_COLOR,
+          icon: "mdi:account-group",
+          selected: currentFilter === ALLES_LABEL,
+        }),
+      );
     }
-
     for (const m of members) {
-      const isSelected = currentFilter === m.name;
-      const bg = isSelected
-        ? this._hexToRgba(m.color, 0.35)
-        : "var(--ha-card-background)";
-      const chip = {
-        type: "template",
-        content: m.name,
-        tap_action: {
-          action: "perform-action",
-          perform_action: "select.select_option",
-          target: { entity_id: filterEntity },
-          data: { option: m.name },
-        },
-        card_mod: {
-          style: `ha-card { --chip-background: ${bg}; }`,
-        },
-      };
-      if (m.picture) {
-        chip.picture = m.picture;
-      } else {
-        chip.icon = "mdi:account";
-        chip.icon_color = m.color;
-      }
-      chips.push(chip);
+      chips.push(
+        this._buildChip({
+          name: m.name,
+          color: m.color,
+          picture: m.picture,
+          icon: "mdi:account",
+          selected: currentFilter === m.name,
+        }),
+      );
     }
-
     for (const extra of this._config.extra_chips) {
       chips.push(extra);
     }
-
     return chips;
   }
 
@@ -175,11 +186,11 @@ class FamilyBoardFilterCard extends HTMLElement {
     const members = (membersState && membersState.attributes.members) || [];
     const currentFilter = filterState ? filterState.state : null;
 
-    // Signature so we don't rebuild card every hass tick
     const sig = JSON.stringify({
-      m: members.map((m) => [m.name, m.color, m.picture]),
+      m: members.map((x) => [x.name, x.color, x.picture]),
       f: currentFilter,
       cfg: this._config.extra_chips.length,
+      a: this._config.show_alles,
     });
     if (sig === this._lastSig && this._inner) {
       this._inner.hass = this._hass;

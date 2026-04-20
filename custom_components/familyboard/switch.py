@@ -39,6 +39,8 @@ async def async_setup_entry(
 
 
 class FamilyBoardSwitch(SwitchEntity, RestoreEntity):
+    """Switch entity replacing an `input_boolean` helper."""
+
     _attr_should_poll = False
     _attr_has_entity_name = True
 
@@ -49,6 +51,7 @@ class FamilyBoardSwitch(SwitchEntity, RestoreEntity):
         icon: str,
         default_on: bool = False,
     ) -> None:
+        """Initialize the switch with metadata and default state."""
         self._attr_unique_id = unique_id
         self._attr_translation_key = translation_key
         self._attr_icon = icon
@@ -57,6 +60,7 @@ class FamilyBoardSwitch(SwitchEntity, RestoreEntity):
         self._attr_device_info = get_device_info()
 
     async def async_added_to_hass(self) -> None:
+        """Restore the previous on/off state on startup."""
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
         if last and last.state in ("on", "off"):
@@ -65,9 +69,11 @@ class FamilyBoardSwitch(SwitchEntity, RestoreEntity):
             self._attr_is_on = self._default_on
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the switch on."""
         self._attr_is_on = True
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the switch off."""
         self._attr_is_on = False
         self.async_write_ha_state()

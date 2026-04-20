@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import logging
+import contextlib
 from datetime import datetime
+import logging
 
 from homeassistant.components.datetime import DateTimeEntity
 from homeassistant.config_entries import ConfigEntry
@@ -63,10 +64,15 @@ async def async_setup_entry(
 
 
 class FamilyBoardDateTime(DateTimeEntity, RestoreEntity):
+    """Datetime entity replacing an `input_datetime` helper."""
+
     _attr_should_poll = False
     _attr_has_entity_name = True
 
-    def __init__(self, unique_id: str, translation_key: str, icon: str, initial: datetime) -> None:
+    def __init__(
+        self, unique_id: str, translation_key: str, icon: str, initial: datetime
+    ) -> None:
+        """Initialize the datetime entity with metadata and initial value."""
         self._attr_unique_id = unique_id
         self._attr_translation_key = translation_key
         self._attr_icon = icon
@@ -74,15 +80,15 @@ class FamilyBoardDateTime(DateTimeEntity, RestoreEntity):
         self._attr_device_info = get_device_info()
 
     async def async_added_to_hass(self) -> None:
+        """Restore the previous value on startup."""
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
         if last and last.state not in (None, "unknown", "unavailable"):
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 self._attr_native_value = datetime.fromisoformat(last.state)
-            except (ValueError, TypeError):
-                pass
 
     async def async_set_value(self, value: datetime) -> None:
+        """Update the stored datetime value."""
         if value.tzinfo is None:
             value = value.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
         self._attr_native_value = value

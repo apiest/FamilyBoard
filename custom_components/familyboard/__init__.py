@@ -10,26 +10,26 @@ created automatically so a device + entities can be registered.
 
 from __future__ import annotations
 
+from datetime import datetime as _dt, time, timedelta
 import hashlib
 import logging
-from datetime import datetime as _dt
-from datetime import time, timedelta
 from pathlib import Path
 from typing import Any
-
-import voluptuous as vol
 
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import (
+    config_validation as cv,
+    device_registry as dr,
+    entity_registry as er,
+)
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
+import voluptuous as vol
 
 from .const import (
     DAY_END_ENTITY,
@@ -51,6 +51,7 @@ from .const import (
 )
 from .helpers import member_calendar_entities
 from .reminder import ReminderManager
+from .schemas import OPTIONS_SCHEMA, default_options
 from .trash import TrashChoreManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -70,84 +71,15 @@ _FRONTEND_RESOURCES: list[tuple[str, str]] = [
     ("familyboard_filter_card", "familyboard-filter-card.js"),
     ("familyboard_calendar_card", "familyboard-calendar-card.js"),
     ("familyboard_progress_card", "familyboard-progress-card.js"),
+    ("familyboard_strategy", "familyboard-strategy.js"),
 ]
 
 # ---------------------------------------------------------------------------
-# Configuration schemas
+# Configuration schemas (CONFIG_SCHEMA pulls from .schemas for runtime parts)
 # ---------------------------------------------------------------------------
 
-EXTRA_CALENDAR_SCHEMA = vol.Schema(
-    {
-        vol.Required("entity"): cv.entity_id,
-        vol.Required("label"): cv.string,
-        vol.Optional("default_summary"): cv.string,
-        vol.Optional("default_description"): cv.string,
-    }
-)
-
-TRASH_SCHEMA = vol.Schema(
-    {
-        vol.Required("type"): cv.string,
-        vol.Required("sensor"): cv.entity_id,
-        vol.Optional("label"): cv.string,
-        vol.Optional("color"): cv.string,
-        vol.Optional("emoji"): cv.string,
-    }
-)
-
-MEMBER_SCHEMA = vol.Schema(
-    {
-        vol.Required("name"): cv.string,
-        vol.Required("calendar"): cv.entity_id,
-        vol.Optional("calendar_label"): cv.string,
-        vol.Optional("calendar_default_summary"): cv.string,
-        vol.Optional("calendar_default_description"): cv.string,
-        vol.Optional("extra_calendars", default=[]): vol.All(
-            cv.ensure_list, [EXTRA_CALENDAR_SCHEMA]
-        ),
-        vol.Optional("chores", default=[]): vol.All(cv.ensure_list, [cv.entity_id]),
-        vol.Optional("person"): cv.entity_id,
-        vol.Optional("color", default="#4A90D9"): cv.string,
-        vol.Optional("notify"): cv.string,
-    }
-)
-
-SHARED_CALENDAR_SCHEMA = vol.Schema(
-    {
-        vol.Required("entity"): cv.entity_id,
-        vol.Required("members"): vol.All(cv.ensure_list, [cv.string]),
-        vol.Optional("name"): cv.string,
-        vol.Optional("color"): cv.string,
-    }
-)
-
-SHARED_CHORE_SCHEMA = vol.Schema(
-    {
-        vol.Required("entity"): cv.entity_id,
-        vol.Required("members"): vol.All(cv.ensure_list, [cv.string]),
-        vol.Optional("type"): cv.string,
-        vol.Optional("name"): cv.string,
-        vol.Optional("color"): cv.string,
-    }
-)
-
 CONFIG_SCHEMA = vol.Schema(
-    {
-        DOMAIN: vol.Schema(
-            {
-                vol.Required("members"): vol.All(cv.ensure_list, [MEMBER_SCHEMA]),
-                vol.Optional("trash", default=[]): vol.All(
-                    cv.ensure_list, [TRASH_SCHEMA]
-                ),
-                vol.Optional("shared_calendars", default=[]): vol.All(
-                    cv.ensure_list, [SHARED_CALENDAR_SCHEMA]
-                ),
-                vol.Optional("shared_chores", default=[]): vol.All(
-                    cv.ensure_list, [SHARED_CHORE_SCHEMA]
-                ),
-            }
-        )
-    },
+    {DOMAIN: OPTIONS_SCHEMA},
     extra=vol.ALLOW_EXTRA,
 )
 
@@ -162,30 +94,54 @@ CANCEL_REMINDER_SCHEMA = vol.Schema({vol.Required("uid"): cv.string})
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Validate YAML config and trigger config entry import."""
+    """Validate YAML config and trigger config entry import (one-time).
+
+    YAML keeps working but the source of truth at runtime is
+    ``entry.options``. The import flow seeds options from YAML on first run
+    and refreshes them on subsequent restarts.
+    """
     if DOMAIN not in config:
         return True
 
-    hass.data.setdefault(DOMAIN, {})["config"] = config[DOMAIN]
+    yaml_conf = config[DOMAIN]
+    hass.data.setdefault(DOMAIN, {})["yaml_config"] = yaml_conf
 
     hass.async_create_task(
         hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": SOURCE_IMPORT}, data={}
+            DOMAIN, context={"source": SOURCE_IMPORT}, data=yaml_conf
         )
     )
     return True
 
 
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the integration when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up FamilyBoard from a config entry."""
     fb = hass.data.setdefault(DOMAIN, {})
-    conf = fb.get("config")
-    if not conf:
-        _LOGGER.error(
-            "FamilyBoard config entry created without YAML config; "
-            "add `familyboard:` block to configuration.yaml"
+
+    # Prefer entry.options; fall back to YAML for legacy installs that haven't
+    # been re-imported yet.
+    if entry.options:
+        conf = dict(entry.options)
+    else:
+        conf = fb.get("yaml_config") or default_options()
+
+    # Make sure required keys exist
+    for key in ("members", "trash", "shared_calendars", "shared_chores"):
+        conf.setdefault(key, [])
+
+    if not conf.get("members"):
+        _LOGGER.warning(
+            "FamilyBoard has no members configured; entities will be empty. "
+            "Add members via Configuration \u2192 Devices & Services \u2192 "
+            "FamilyBoard \u2192 Configure."
         )
-        return False
+
+    fb["config"] = conf
 
     # Register the shared device against this entry
     dev_reg = dr.async_get(hass)
@@ -219,9 +175,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Forward to platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Reload the entry whenever the options flow saves changes
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
     # Late init: register frontend, link entities, run first refresh
     async def _async_startup(_event: Any = None) -> None:
+        """Run frontend + entity wiring + initial refresh once HA is ready."""
         await _async_register_frontend(hass)
+        await _async_seed_dashboard(hass)
         await _async_link_entities(hass, entry)
         await reminder_manager.async_start()
         await trash_chore_manager.async_start()
@@ -271,11 +232,25 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_link_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Ensure all FB entities are linked to our device + this entry."""
+    """Ensure all FB entities are linked to our device + this entry.
+
+    Also migrates entity_ids that earlier versions generated from
+    translation_key (e.g. ``select.familyboard_calendar_filter``) to the
+    canonical ids the dashboard / frontend cards reference (e.g.
+    ``select.familyboard_calendar``).
+    """
     dev_reg = dr.async_get(hass)
     device = dev_reg.async_get_device(identifiers={DEVICE_IDENTIFIER})
     if device is None:
         return
+
+    # unique_id -> desired entity_id for entities where we pin an object_id.
+    canonical_ids: dict[str, str] = {
+        "familyboard_calendar": "select.familyboard_calendar",
+        "familyboard_view": "select.familyboard_view",
+        "familyboard_layout": "select.familyboard_layout",
+        "familyboard_event_member": "select.familyboard_event_member",
+    }
 
     ent_reg = er.async_get(hass)
     for ent in list(ent_reg.entities.values()):
@@ -288,6 +263,13 @@ async def _async_link_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
             updates["config_entry_id"] = entry.entry_id
         if updates:
             ent_reg.async_update_entity(ent.entity_id, **updates)
+
+        desired = canonical_ids.get(ent.unique_id)
+        if desired and ent.entity_id != desired and ent_reg.async_get(desired) is None:
+            _LOGGER.info(
+                "Migrating FamilyBoard entity_id %s -> %s", ent.entity_id, desired
+            )
+            ent_reg.async_update_entity(ent.entity_id, new_entity_id=desired)
 
 
 # ---------------------------------------------------------------------------
@@ -364,9 +346,112 @@ async def _async_sync_lovelace_resources(hass: HomeAssistant) -> None:
             )
 
 
+_DASHBOARD_URL_PATH = "familyboard"
+_DASHBOARD_TITLE = "FamilyBoard"
+_DASHBOARD_ICON = "mdi:home-heart"
+
+
+async def _async_seed_dashboard(hass: HomeAssistant) -> None:
+    """Seed a storage-mode Lovelace dashboard for FamilyBoard, once.
+
+    Creates a sidebar entry that renders via the ``custom:familyboard``
+    strategy. The user can edit the dashboard freely afterwards; we only
+    create it if no dashboard with our ``url_path`` exists yet.
+    """
+    try:
+        from homeassistant.components import frontend
+        from homeassistant.components.lovelace import dashboard as lovelace_dashboard
+        from homeassistant.components.lovelace.const import LOVELACE_DATA
+    except ImportError:
+        _LOGGER.debug("Lovelace not available; skipping dashboard seed")
+        return
+
+    lovelace_data = hass.data.get(LOVELACE_DATA)
+    if lovelace_data is None:
+        _LOGGER.debug("Lovelace data not initialised; skipping dashboard seed")
+        return
+
+    # If we already registered (this run or a previous one), nothing to do.
+    if _DASHBOARD_URL_PATH in lovelace_data.dashboards:
+        return
+
+    collection = lovelace_dashboard.DashboardsCollection(hass)
+    try:
+        await collection.async_load()
+    except HomeAssistantError as err:
+        _LOGGER.warning("Could not load Lovelace dashboards collection: %s", err)
+        return
+
+    already_persisted = any(
+        item.get("url_path") == _DASHBOARD_URL_PATH for item in collection.async_items()
+    )
+
+    if not already_persisted:
+        try:
+            await collection.async_create_item(
+                {
+                    "allow_single_word": True,
+                    "icon": _DASHBOARD_ICON,
+                    "title": _DASHBOARD_TITLE,
+                    "url_path": _DASHBOARD_URL_PATH,
+                    "show_in_sidebar": True,
+                    "require_admin": False,
+                    "mode": "storage",
+                }
+            )
+        except (HomeAssistantError, vol.Invalid) as err:
+            _LOGGER.warning("Could not create FamilyBoard dashboard: %s", err)
+            return
+
+    # Wire up the in-memory LovelaceStorage + sidebar panel ourselves, since
+    # the lovelace component's collection listener only runs for changes made
+    # to its own collection instance during initial setup.
+    item = next(
+        (
+            i
+            for i in collection.async_items()
+            if i.get("url_path") == _DASHBOARD_URL_PATH
+        ),
+        None,
+    )
+    if item is None:
+        return
+
+    storage = lovelace_dashboard.LovelaceStorage(hass, item)
+    lovelace_data.dashboards[_DASHBOARD_URL_PATH] = storage
+
+    # Seed the dashboard config with our strategy on first creation only.
+    if not already_persisted:
+        try:
+            await storage.async_save(
+                {"strategy": {"type": "custom:familyboard"}, "title": _DASHBOARD_TITLE}
+            )
+        except HomeAssistantError as err:
+            _LOGGER.warning("Could not save FamilyBoard dashboard config: %s", err)
+
+    try:
+        frontend.async_register_built_in_panel(
+            hass,
+            "lovelace",
+            sidebar_title=_DASHBOARD_TITLE,
+            sidebar_icon=_DASHBOARD_ICON,
+            frontend_url_path=_DASHBOARD_URL_PATH,
+            require_admin=False,
+            config={"mode": "storage"},
+            update=True,
+        )
+        _LOGGER.info("Registered FamilyBoard dashboard at /%s", _DASHBOARD_URL_PATH)
+    except ValueError as err:
+        _LOGGER.debug("FamilyBoard dashboard panel already present: %s", err)
+
+
 async def _async_check_lovelace_dependencies(hass: HomeAssistant) -> None:
     """Warn if required HACS frontend deps (mushroom, card-mod) are missing."""
-    required = {"mushroom": "Mushroom Cards", "card-mod": "card-mod"}
+    required = {
+        "mushroom": "Mushroom Cards",
+        "card-mod": "card-mod",
+        "bubble-card": "Bubble Card",
+    }
     found: set[str] = set()
 
     lovelace_data = hass.data.get("lovelace")
@@ -422,6 +507,7 @@ def _async_register_services(hass: HomeAssistant, conf: dict) -> None:
             cal_map[(member["name"], label)] = entity
 
     async def handle_add_event(call: ServiceCall) -> None:
+        """Create a calendar event from the add-event form entities."""
         member_state = hass.states.get(EVENT_MEMBER_ENTITY)
         calendar_state = hass.states.get(EVENT_CALENDAR_ENTITY)
         title = hass.states.get(EVENT_TITLE_ENTITY)
@@ -488,6 +574,7 @@ def _async_register_services(hass: HomeAssistant, conf: dict) -> None:
         )
 
     async def handle_snooze_test(call: ServiceCall) -> None:
+        """Force-fire a reminder by uid for testing."""
         manager: ReminderManager | None = hass.data.get(DOMAIN, {}).get(
             "reminder_manager"
         )
@@ -497,6 +584,7 @@ def _async_register_services(hass: HomeAssistant, conf: dict) -> None:
         await manager.async_test_fire(uid)
 
     async def handle_cancel_reminder(call: ServiceCall) -> None:
+        """Cancel an active reminder by uid."""
         manager: ReminderManager | None = hass.data.get(DOMAIN, {}).get(
             "reminder_manager"
         )
@@ -531,6 +619,7 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         reminder_manager: ReminderManager | None = None,
         trash_chore_manager: TrashChoreManager | None = None,
     ) -> None:
+        """Initialize the coordinator with config + optional managers."""
         super().__init__(
             hass,
             _LOGGER,
@@ -554,6 +643,7 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
     async def _fetch_events(
         self, entity_id: str, start_iso: str, end_iso: str
     ) -> list[dict]:
+        """Call ``calendar.get_events`` and return the raw event list."""
         try:
             response = await self.hass.services.async_call(
                 "calendar",
@@ -563,8 +653,8 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
                 blocking=True,
                 return_response=True,
             )
-        except HomeAssistantError as err:
-            _LOGGER.error("Error fetching events from %s: %s", entity_id, err)
+        except HomeAssistantError:
+            _LOGGER.exception("Error fetching events from %s", entity_id)
             return []
         if not response or entity_id not in response:
             return []
@@ -573,6 +663,7 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
     async def _fetch_todo_items(
         self, entity_id: str, status: str = "needs_action"
     ) -> list[dict]:
+        """Call ``todo.get_items`` for ``entity_id`` filtered by status."""
         try:
             response = await self.hass.services.async_call(
                 "todo",
@@ -582,14 +673,15 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
                 blocking=True,
                 return_response=True,
             )
-        except HomeAssistantError as err:
-            _LOGGER.error("Error fetching todos from %s: %s", entity_id, err)
+        except HomeAssistantError:
+            _LOGGER.exception("Error fetching todos from %s", entity_id)
             return []
         if not response or entity_id not in response:
             return []
         return response[entity_id].get("items", [])
 
     def _get_view_window(self, now: _dt) -> tuple[str, str] | None:
+        """Return (start, end) ISO date pair for the current view selection."""
         view_state = self.hass.states.get(VIEW_ENTITY)
         if not view_state:
             return None
@@ -607,9 +699,8 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
             return (today.isoformat(), (today + timedelta(days=30)).isoformat())
         return None
 
-    def _chore_in_view(
-        self, chore: dict, view_window: tuple[str, str] | None
-    ) -> bool:
+    def _chore_in_view(self, chore: dict, view_window: tuple[str, str] | None) -> bool:
+        """Return True if the chore's due date falls inside the view window."""
         if view_window is None:
             return True
         due = chore.get("due")
@@ -762,9 +853,12 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
                     cal_key = (norm_summary, idx)
                     if cal_key in matched_cal_indices:
                         continue
-                    if todo_due and cal_task.get("start"):
-                        if cal_task["start"][:10] != todo_due[:10]:
-                            continue
+                    if (
+                        todo_due
+                        and cal_task.get("start")
+                        and cal_task["start"][:10] != todo_due[:10]
+                    ):
+                        continue
                     matched_cal = cal_task
                     matched_idx = idx
                     break
@@ -835,7 +929,7 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
 
         # Combine + dedup + filter by view window
         all_chores: list[dict] = []
-        for mname, chores_list in result["member_chores"].items():
+        for chores_list in result["member_chores"].values():
             for chore in chores_list:
                 if self._chore_in_view(chore, view_window):
                     all_chores.append(chore)
@@ -851,6 +945,7 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
             deduped_chores.append(chore)
 
         def _sort_key(chore: dict) -> tuple:
+            """Sort overdue first, then by due date, then no-date last."""
             due = chore.get("due")
             if due and due < today_str:
                 return (0, due)
@@ -877,9 +972,9 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
             prev_uids = self._prev_active_uids.get(mname, set())
             disappeared = prev_uids - current_uids
             if disappeared:
-                self._daily_completed[mname] = (
-                    self._daily_completed.get(mname, 0) + len(disappeared)
-                )
+                self._daily_completed[mname] = self._daily_completed.get(
+                    mname, 0
+                ) + len(disappeared)
             self._prev_active_uids[mname] = current_uids
 
             completed = self._daily_completed.get(mname, 0)
@@ -896,7 +991,7 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
             }
 
         for ev in alles_map.values():
-            paired = sorted(zip(ev["members"], ev["member_colors"]))
+            paired = sorted(zip(ev["members"], ev["member_colors"], strict=False))
             ev["members"] = [p[0] for p in paired]
             ev["member_colors"] = [p[1] for p in paired]
 
@@ -907,13 +1002,13 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         if self.trash_chore_manager:
             try:
                 await self.trash_chore_manager.async_auto_complete()
-            except HomeAssistantError as err:
-                _LOGGER.error("Trash chore auto-complete failed: %s", err)
+            except HomeAssistantError:
+                _LOGGER.exception("Trash chore auto-complete failed")
 
         if self.reminder_manager:
             try:
                 self.reminder_manager.sync_from_chores(deduped_chores)
-            except HomeAssistantError as err:
-                _LOGGER.error("Reminder sync failed: %s", err)
+            except HomeAssistantError:
+                _LOGGER.exception("Reminder sync failed")
 
         return result

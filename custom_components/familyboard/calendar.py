@@ -9,17 +9,18 @@ markers (so cards can render multi-color borders).
 
 from __future__ import annotations
 
+from datetime import date as date_cls, datetime, timedelta as _td
 import logging
-from datetime import date as date_cls
-from datetime import datetime
-from datetime import timedelta as _td
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+)
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, TASK_IDENTIFIER, get_device_info
@@ -46,6 +47,7 @@ DEFAULT_TRASH_EMOJIS = {
 
 
 def _build_marker(members: list[str], colors: list[str]) -> str:
+    """Build the `[FB:members=...;colors=...]` marker stored in descriptions."""
     return (
         MARKER_PREFIX
         + "members="
@@ -57,10 +59,12 @@ def _build_marker(members: list[str], colors: list[str]) -> str:
 
 
 def _is_task(ev: dict) -> bool:
+    """Return True if ``ev`` looks like a Google Tasks event we should hide."""
     return TASK_IDENTIFIER in (ev.get("description") or "")
 
 
 def _event_key(ev: dict) -> tuple:
+    """Return a stable dedup key for an event (summary + start + end)."""
     return (
         (ev.get("summary") or "").strip().lower(),
         ev.get("start"),
@@ -74,13 +78,14 @@ def _parse_datetime_or_date(value: str) -> datetime:
         raise ValueError("Empty date string")
     try:
         dt = datetime.fromisoformat(value)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
-        return dt
     except ValueError:
-        pass
-    d = date_cls.fromisoformat(value)
-    return datetime.combine(d, datetime.min.time(), tzinfo=dt_util.DEFAULT_TIME_ZONE)
+        d = date_cls.fromisoformat(value)
+        return datetime.combine(
+            d, datetime.min.time(), tzinfo=dt_util.DEFAULT_TIME_ZONE
+        )
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+    return dt
 
 
 async def async_setup_entry(
@@ -97,7 +102,9 @@ async def async_setup_entry(
     default_summaries: dict[str, str] = {}
     for member in conf["members"]:
         if member.get("calendar_default_description"):
-            default_descriptions[member["calendar"]] = member["calendar_default_description"]
+            default_descriptions[member["calendar"]] = member[
+                "calendar_default_description"
+            ]
         if member.get("calendar_default_summary"):
             default_summaries[member["calendar"]] = member["calendar_default_summary"]
         for extra in member.get("extra_calendars", []):
@@ -131,8 +138,9 @@ async def async_setup_entry(
         )
     )
 
-    if conf.get("trash"):
-        entities.append(FamilyBoardTrashCalendar(coordinator, conf["trash"]))
+    # Always expose the trash calendar so frontend cards can reference it
+    # unconditionally. With no trash sensors configured it simply has no events.
+    entities.append(FamilyBoardTrashCalendar(coordinator, conf.get("trash", [])))
 
     async_add_entities(entities, True)
 
@@ -195,7 +203,7 @@ class FamilyBoardProxyCalendar(CoordinatorEntity, CalendarEntity):
 
     def __init__(
         self,
-        coordinator,
+        coordinator: DataUpdateCoordinator,
         member_name: str,
         primary_entity: str,
         extra_entities: list[str],
@@ -203,6 +211,7 @@ class FamilyBoardProxyCalendar(CoordinatorEntity, CalendarEntity):
         default_descriptions: dict[str, str] | None = None,
         default_summaries: dict[str, str] | None = None,
     ) -> None:
+        """Store member metadata and proxy targets."""
         super().__init__(coordinator)
         self._member_name = member_name
         self._primary_entity = primary_entity
@@ -216,6 +225,7 @@ class FamilyBoardProxyCalendar(CoordinatorEntity, CalendarEntity):
 
     @property
     def event(self) -> CalendarEvent | None:
+        """Return the next upcoming event for this member."""
         if not self.coordinator.data:
             return None
         events = self.coordinator.data.get("member_events", {}).get(
@@ -261,9 +271,7 @@ class FamilyBoardProxyCalendar(CoordinatorEntity, CalendarEntity):
                 seen.add(key)
                 try:
                     start_dt = _parse_datetime_or_date(ev.get("start"))
-                    end_dt = _parse_datetime_or_date(
-                        ev.get("end") or ev.get("start")
-                    )
+                    end_dt = _parse_datetime_or_date(ev.get("end") or ev.get("start"))
                 except (ValueError, TypeError):
                     continue
                 description = ev.get("description") or default_desc
@@ -288,12 +296,13 @@ class FamilyBoardAllesCalendar(CoordinatorEntity, CalendarEntity):
 
     def __init__(
         self,
-        coordinator,
+        coordinator: DataUpdateCoordinator,
         members: list[dict],
         trash: list[dict] | None = None,
         default_descriptions: dict[str, str] | None = None,
         default_summaries: dict[str, str] | None = None,
     ) -> None:
+        """Store member configs and trash sensors for refresh tracking."""
         super().__init__(coordinator)
         self._members = members
         self._trash = trash or []
@@ -303,13 +312,15 @@ class FamilyBoardAllesCalendar(CoordinatorEntity, CalendarEntity):
         self._attr_device_info = get_device_info()
 
     async def async_added_to_hass(self) -> None:
+        """Subscribe to trash sensor changes for live state refreshes."""
         await super().async_added_to_hass()
         if not self._trash:
             return
         sensor_ids = [t["sensor"] for t in self._trash]
 
         @callback
-        def _refresh(_event) -> None:
+        def _refresh(_event: Event) -> None:
+            """Trigger a state write when a trash sensor changes."""
             self.async_write_ha_state()
 
         self.async_on_remove(
@@ -318,6 +329,7 @@ class FamilyBoardAllesCalendar(CoordinatorEntity, CalendarEntity):
 
     @property
     def event(self) -> CalendarEvent | None:
+        """Return the next upcoming cross-member event."""
         if not self.coordinator.data:
             return None
         events = self.coordinator.data.get("alles_events_today", [])
@@ -375,7 +387,7 @@ class FamilyBoardAllesCalendar(CoordinatorEntity, CalendarEntity):
 
         out: list[CalendarEvent] = []
         for ev in sorted(bucket.values(), key=lambda e: e.get("start") or ""):
-            paired = sorted(zip(ev["members"], ev["member_colors"]))
+            paired = sorted(zip(ev["members"], ev["member_colors"], strict=False))
             ev["members"] = [p[0] for p in paired]
             ev["member_colors"] = [p[1] for p in paired]
             try:
@@ -395,6 +407,7 @@ class FamilyBoardAllesCalendar(CoordinatorEntity, CalendarEntity):
     def _build_event(
         self, ev: dict, start_dt: datetime, end_dt: datetime
     ) -> CalendarEvent:
+        """Build a CalendarEvent with the embedded multi-member marker."""
         members = ev.get("members") or []
         colors = ev.get("member_colors") or []
         summary = ev.get("summary", "")
@@ -424,20 +437,23 @@ class FamilyBoardTrashCalendar(CoordinatorEntity, CalendarEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "trash"
 
-    def __init__(self, coordinator, trash: list[dict]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator, trash: list[dict]) -> None:
+        """Store the trash sensor list to surface as all-day events."""
         super().__init__(coordinator)
         self._trash = trash
         self._attr_unique_id = "familyboard_trash"
         self._attr_device_info = get_device_info()
 
     async def async_added_to_hass(self) -> None:
+        """Subscribe to trash sensor changes for live state refreshes."""
         await super().async_added_to_hass()
         sensor_ids = [t["sensor"] for t in self._trash]
         if not sensor_ids:
             return
 
         @callback
-        def _refresh(_event) -> None:
+        def _refresh(_event: Event) -> None:
+            """Trigger a state write when a trash sensor changes."""
             self.async_write_ha_state()
 
         self.async_on_remove(
@@ -446,6 +462,7 @@ class FamilyBoardTrashCalendar(CoordinatorEntity, CalendarEntity):
 
     @property
     def event(self) -> CalendarEvent | None:
+        """Return the next upcoming trash collection event."""
         events = _build_trash_events(
             self.hass, self._trash, dt_util.now(), dt_util.now() + _td(days=60)
         )
@@ -454,4 +471,5 @@ class FamilyBoardTrashCalendar(CoordinatorEntity, CalendarEntity):
     async def async_get_events(
         self, hass: HomeAssistant, start_date: datetime, end_date: datetime
     ) -> list[CalendarEvent]:
+        """Return all trash collection events within the requested window."""
         return _build_trash_events(hass, self._trash, start_date, end_date)
