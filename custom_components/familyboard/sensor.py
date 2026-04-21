@@ -66,6 +66,7 @@ class FamilyBoardChoresSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._conf = conf
         self._attr_unique_id = "familyboard_chores"
+        self._attr_suggested_object_id = "familyboard_chores"
         self._attr_icon = "mdi:bell-ring"
         self._attr_device_info = get_device_info()
 
@@ -95,6 +96,7 @@ class FamilyBoardComplimentSensor(SensorEntity):
     def __init__(self) -> None:
         """Initialize the compliment sensor."""
         self._attr_unique_id = "familyboard_compliment_integrated"
+        self._attr_suggested_object_id = "familyboard_compliment"
         self._attr_icon = "mdi:hand-wave"
         self._attr_device_info = get_device_info()
 
@@ -126,6 +128,7 @@ class FamilyBoardMembersSensor(CoordinatorEntity, SensorEntity):
         """Store the coordinator reference."""
         super().__init__(coordinator)
         self._attr_unique_id = "familyboard_members"
+        self._attr_suggested_object_id = "familyboard_members"
         self._attr_icon = "mdi:account-group"
         self._attr_device_info = get_device_info()
 
@@ -158,6 +161,7 @@ class FamilyBoardProgressSensor(CoordinatorEntity, SensorEntity):
         """Store the coordinator reference."""
         super().__init__(coordinator)
         self._attr_unique_id = "familyboard_progress"
+        self._attr_suggested_object_id = "familyboard_progress"
         self._attr_icon = "mdi:progress-check"
         self._attr_device_info = get_device_info()
 
@@ -216,6 +220,7 @@ class FamilyBoardMealsSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._conf = conf
         self._attr_unique_id = "familyboard_meals"
+        self._attr_suggested_object_id = "familyboard_meals"
         self._attr_icon = "mdi:silverware-fork-knife"
         self._attr_device_info = get_device_info()
 
@@ -284,6 +289,7 @@ class FamilyBoardRecentMealsSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._conf = conf
         self._attr_unique_id = "familyboard_recent_meals"
+        self._attr_suggested_object_id = "familyboard_recent_meals"
         self._attr_icon = "mdi:history"
         self._attr_device_info = get_device_info()
 

@@ -75,6 +75,7 @@ _FRONTEND_RESOURCES: list[tuple[str, str]] = [
     ("familyboard_view_card", "familyboard-view-card.js"),
     ("familyboard_calendar_card", "familyboard-calendar-card.js"),
     ("familyboard_progress_card", "familyboard-progress-card.js"),
+    ("familyboard_countdown_card", "familyboard-countdown-card.js"),
     ("familyboard_strategy", "familyboard-strategy.js"),
 ]
 
@@ -88,6 +89,7 @@ CONFIG_SCHEMA = vol.Schema(
 )
 
 ADD_EVENT_SCHEMA = vol.Schema({})
+ADD_MEAL_SCHEMA = vol.Schema({})
 SNOOZE_TEST_SCHEMA = vol.Schema({vol.Required("uid"): cv.string})
 CANCEL_REMINDER_SCHEMA = vol.Schema({vol.Required("uid"): cv.string})
 
@@ -218,7 +220,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if trash_chore_manager is not None:
         await trash_chore_manager.async_stop()
 
-    for svc in ("add_event", "snooze_test", "cancel_reminder"):
+    for svc in ("add_event", "add_meal", "snooze_test", "cancel_reminder"):
         if hass.services.has_service(DOMAIN, svc):
             hass.services.async_remove(DOMAIN, svc)
 
@@ -477,6 +479,66 @@ def _async_register_services(hass: HomeAssistant, conf: dict) -> None:
             blocking=True,
         )
 
+    async def handle_add_meal(call: ServiceCall) -> None:
+        """Create an all-day meal event from the title + day_start entities.
+
+        Reads ``text.familyboard_event_title`` (title) and
+        ``datetime.familyboard_day_start`` (date) and writes an all-day
+        event into the configured ``meal_calendar``. Resets the title
+        afterwards. No service data required at the call site, so it can be
+        triggered from a Mushroom chip / Bubble button without touching
+        Jinja-in-data limitations.
+        """
+        meal_calendar = conf.get("meal_calendar")
+        if not meal_calendar:
+            raise HomeAssistantError(
+                "meal_calendar is not configured in FamilyBoard options"
+            )
+
+        title = hass.states.get(EVENT_TITLE_ENTITY)
+        day_start = hass.states.get(DAY_START_ENTITY)
+        if not title or not day_start:
+            raise HomeAssistantError("Missing entity states for add_meal")
+
+        event_title = title.state
+        if not event_title or event_title in ("unknown", "unavailable"):
+            _LOGGER.debug("Empty meal title; skipping add_meal")
+            return
+
+        try:
+            start_date = _dt.fromisoformat(day_start.state).date()
+        except (ValueError, TypeError) as err:
+            raise HomeAssistantError(
+                f"Invalid day_start datetime: {day_start.state}"
+            ) from err
+
+        end_date = start_date + timedelta(days=1)
+
+        await hass.services.async_call(
+            "calendar",
+            "create_event",
+            {
+                "summary": event_title,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            },
+            target={"entity_id": meal_calendar},
+            blocking=True,
+        )
+
+        await hass.services.async_call(
+            "text",
+            "set_value",
+            {"entity_id": EVENT_TITLE_ENTITY, "value": ""},
+            blocking=True,
+        )
+
+        # Refresh the meals sensor immediately so the dashboard reflects
+        # the new event without waiting for the 5-minute coordinator tick.
+        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+        if coordinator is not None:
+            await coordinator.async_request_refresh()
+
     async def handle_snooze_test(call: ServiceCall) -> None:
         """Force-fire a reminder by uid for testing."""
         manager: ReminderManager | None = hass.data.get(DOMAIN, {}).get(
@@ -499,6 +561,9 @@ def _async_register_services(hass: HomeAssistant, conf: dict) -> None:
 
     hass.services.async_register(
         DOMAIN, "add_event", handle_add_event, schema=ADD_EVENT_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "add_meal", handle_add_meal, schema=ADD_MEAL_SCHEMA
     )
     hass.services.async_register(
         DOMAIN, "snooze_test", handle_snooze_test, schema=SNOOZE_TEST_SCHEMA

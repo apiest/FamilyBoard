@@ -15,8 +15,9 @@ a unified family dashboard with reusable Lovelace cards.
 - **Chores sensor** — combined per-member list of `todo.*` items, sorted overdue → upcoming → no-date, optionally cross-matched with calendar tasks for start/end times.
 - **Per-member progress sensor** — daily completion tracking with color rings.
 - **Interactive snooze reminders** — actionable mobile_app notifications scheduled at task start time, with persistence across HA restarts and away-aware delivery.
-- **Custom Lovelace cards** — composable building blocks: `chores`, `calendar`, `filter`, `progress`. Each takes its own config; users can mix them into any dashboard.
+- **Custom Lovelace cards** — composable building blocks: `chores`, `calendar`, `filter`, `progress`, `countdown`. Each takes its own config; users can mix them into any dashboard.
 - **Add-event form entities** — built-in `select`, `text`, `switch` and `datetime` entities power a "create event" form with cascading member → calendar pickers.
+- **Event countdown** — kiosk-editable countdown to a single target date (label + date), rendered by `custom:familyboard-countdown-card`. Auto-hides when no label is set and self-clears the day after the event.
 
 ## Installation
 

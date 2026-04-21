@@ -20,6 +20,7 @@
           "trash": "Trash collections",
           "shared_calendars": "Shared calendars",
           "shared_chores": "Shared chores",
+          "general": "General settings",
           "save": "Save and exit"
         }
       },
@@ -103,6 +104,13 @@
           "color": "Color (hex)",
           "__remove__": "Remove this entry"
         }
+      },
+      "general": {
+        "title": "General settings",
+        "description": "Optional integration-wide settings.",
+        "data": {
+          "meal_calendar": "Meal calendar"
+        }
       }
     },
     "error": {
@@ -152,13 +160,15 @@
       "show_reminders": { "name": "Show reminders" }
     },
     "text": {
-      "event_title": { "name": "Event title" }
+      "event_title": { "name": "Event title" },
+      "countdown_label": { "name": "Countdown label" }
     },
     "datetime": {
       "event_start": { "name": "Event start" },
       "event_end": { "name": "Event end" },
       "day_start": { "name": "Day start" },
-      "day_end": { "name": "Day end" }
+      "day_end": { "name": "Day end" },
+      "countdown_date": { "name": "Countdown date" }
     }
   },
   "services": {

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import contextlib
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 from homeassistant.components.datetime import DateTimeEntity
@@ -26,6 +26,7 @@ async def async_setup_entry(
     """Set up FamilyBoard datetime entities from a config entry."""
     now = dt_util.now().replace(minute=0, second=0, microsecond=0)
     end = now.replace(hour=now.hour + 1) if now.hour < 23 else now
+    countdown_default = (now + timedelta(days=7)).replace(hour=0)
 
     entities = [
         FamilyBoardDateTime(
@@ -52,6 +53,12 @@ async def async_setup_entry(
             icon="mdi:calendar-end",
             initial=end,
         ),
+        FamilyBoardDateTime(
+            unique_id="familyboard_countdown_date",
+            translation_key="countdown_date",
+            icon="mdi:calendar-end",
+            initial=countdown_default,
+        ),
     ]
     async_add_entities(entities, True)
     fb = hass.data.setdefault(DOMAIN, {})
@@ -60,6 +67,7 @@ async def async_setup_entry(
         "event_end": entities[1],
         "day_start": entities[2],
         "day_end": entities[3],
+        "countdown_date": entities[4],
     }
 
 
@@ -74,6 +82,7 @@ class FamilyBoardDateTime(DateTimeEntity, RestoreEntity):
     ) -> None:
         """Initialize the datetime entity with metadata and initial value."""
         self._attr_unique_id = unique_id
+        self._attr_suggested_object_id = unique_id
         self._attr_translation_key = translation_key
         self._attr_icon = icon
         self._attr_native_value = initial

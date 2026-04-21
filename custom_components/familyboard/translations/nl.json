@@ -20,6 +20,7 @@
           "trash": "Afval",
           "shared_calendars": "Gedeelde agenda's",
           "shared_chores": "Gedeelde taken",
+          "general": "Algemene instellingen",
           "save": "Opslaan en sluiten"
         }
       },
@@ -103,6 +104,13 @@
           "color": "Kleur (hex)",
           "__remove__": "Verwijder dit item"
         }
+      },
+      "general": {
+        "title": "Algemene instellingen",
+        "description": "Optionele integratie-brede instellingen.",
+        "data": {
+          "meal_calendar": "Maaltijdenagenda"
+        }
       }
     },
     "error": {
@@ -152,13 +160,15 @@
       "show_reminders": { "name": "Herinneringen tonen" }
     },
     "text": {
-      "event_title": { "name": "Event titel" }
+      "event_title": { "name": "Event titel" },
+      "countdown_label": { "name": "Aftellabel" }
     },
     "datetime": {
       "event_start": { "name": "Event start" },
       "event_end": { "name": "Event einde" },
       "day_start": { "name": "Dag start" },
-      "day_end": { "name": "Dag einde" }
+      "day_end": { "name": "Dag einde" },
+      "countdown_date": { "name": "Afteldatum" }
     }
   },
   "services": {

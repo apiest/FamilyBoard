@@ -9,6 +9,14 @@ add_event:
     Reads the current entity states, creates the event on the matching
     member calendar, and resets the form.
 
+add_meal:
+  name: Add meal
+  description: >-
+    Create an all-day meal event in the configured meal_calendar from the
+    add-event form entities (text.familyboard_event_title,
+    datetime.familyboard_day_start). Resets the title afterwards. Requires
+    `meal_calendar` to be set in the FamilyBoard options.
+
 snooze_test:
   name: Test snooze reminder
   description: >-

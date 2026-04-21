@@ -27,9 +27,18 @@ async def async_setup_entry(
         icon="mdi:format-title",
         max_value=255,
     )
-    async_add_entities([title], True)
+    countdown_label = FamilyBoardText(
+        unique_id="familyboard_countdown_label",
+        translation_key="countdown_label",
+        icon="mdi:rocket-launch",
+        max_value=80,
+    )
+    async_add_entities([title, countdown_label], True)
     fb = hass.data.setdefault(DOMAIN, {})
-    fb["text"] = {"event_title": title}
+    fb["text"] = {
+        "event_title": title,
+        "countdown_label": countdown_label,
+    }
 
 
 class FamilyBoardText(TextEntity, RestoreEntity):
@@ -44,6 +53,7 @@ class FamilyBoardText(TextEntity, RestoreEntity):
     ) -> None:
         """Initialize the text entity with metadata and an empty value."""
         self._attr_unique_id = unique_id
+        self._attr_suggested_object_id = unique_id
         self._attr_translation_key = translation_key
         self._attr_icon = icon
         self._attr_native_max = max_value

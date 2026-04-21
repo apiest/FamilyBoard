@@ -47,6 +47,7 @@ class FamilyBoardMealsUnplannedBinarySensor(CoordinatorEntity, BinarySensorEntit
         """Store the coordinator reference."""
         super().__init__(coordinator)
         self._attr_unique_id = "familyboard_meals_unplanned"
+        self._attr_suggested_object_id = "familyboard_meals_unplanned"
         self._attr_icon = "mdi:silverware-variant"
         self._attr_device_info = get_device_info()
 

@@ -32,6 +32,9 @@ const DEFAULTS = {
   show_calendar: true,
   show_chores: true,
   show_progress: true,
+  show_countdown: true,
+  countdown_label_entity: "text.familyboard_countdown_label",
+  countdown_date_entity: "datetime.familyboard_countdown_date",
   title: "Family Board",
   path: "familyboard",
   icon: "mdi:calendar-multiple",
@@ -306,6 +309,13 @@ function _todayPerMemberSection(cfg, members) {
 
 function _sideStackSection(cfg) {
   const stack = [];
+  if (cfg.show_countdown !== false) {
+    stack.push({
+      type: "custom:familyboard-countdown-card",
+      label_entity: cfg.countdown_label_entity,
+      date_entity: cfg.countdown_date_entity,
+    });
+  }
   if (cfg.show_progress) {
     stack.push({
       type: "custom:familyboard-progress-card",

@@ -194,8 +194,38 @@ class FamilyBoardOptionsFlow(config_entries.OptionsFlow):
                 "trash",
                 "shared_calendars",
                 "shared_chores",
+                "general",
                 "save",
             ],
+        )
+
+    async def async_step_general(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Edit miscellaneous integration-wide settings (e.g. meal calendar).
+
+        Persists immediately on submit so the user does not need to also
+        click "Save and exit" — matching the behaviour of the per-entity
+        edit steps.
+        """
+        if user_input is not None:
+            meal = (user_input.get("meal_calendar") or "").strip()
+            if meal:
+                self._options["meal_calendar"] = meal
+            else:
+                self._options.pop("meal_calendar", None)
+            return self.async_create_entry(title="", data=self._options)
+
+        return self.async_show_form(
+            step_id="general",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        "meal_calendar",
+                        default=self._options.get("meal_calendar", ""),
+                    ): _entity("calendar"),
+                }
+            ),
         )
 
     async def async_step_save(

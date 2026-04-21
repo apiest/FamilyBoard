@@ -15,9 +15,13 @@
  *     today: mdi:calendar-today
  *     ...
  *   color: amber                                 # optional, selected color
+ *   show_reminders: true                         # optional, append a Herinneringen toggle chip
+ *   reminders_switch: switch.familyboard_show_reminders  # optional, entity backing the chip
+ *   extra_chips: []                              # optional, raw mushroom-chip dicts appended
  */
 
 const DEFAULT_ENTITY = "select.familyboard_view";
+const DEFAULT_REMINDERS_SWITCH = "switch.familyboard_show_reminders";
 
 const DEFAULT_ICONS = {
   today: "mdi:calendar-today",
@@ -67,6 +71,10 @@ class FamilyBoardViewCard extends HTMLElement {
       entity: config.entity || DEFAULT_ENTITY,
       icons: { ...DEFAULT_ICONS, ...(config.icons || {}) },
       color: config.color || "amber",
+      show_reminders: config.show_reminders === true,
+      reminders_switch: config.reminders_switch || DEFAULT_REMINDERS_SWITCH,
+      reminders_label: config.reminders_label || "Herinneringen",
+      extra_chips: Array.isArray(config.extra_chips) ? config.extra_chips : [],
       ...config,
     };
   }
@@ -103,7 +111,7 @@ class FamilyBoardViewCard extends HTMLElement {
   _buildChips(stateObj) {
     const options = stateObj?.attributes?.options || [];
     const current = stateObj?.state;
-    return options.map((opt) => ({
+    const chips = options.map((opt) => ({
       type: "template",
       icon: this._config.icons[opt] || "mdi:circle-outline",
       content: this._label(stateObj, opt),
@@ -115,6 +123,26 @@ class FamilyBoardViewCard extends HTMLElement {
         data: { option: opt },
       },
     }));
+    if (this._config.show_reminders) {
+      const swEntity = this._config.reminders_switch;
+      const sw = this._hass.states[swEntity];
+      const on = sw && sw.state === "on";
+      chips.push({
+        type: "template",
+        icon: on ? "mdi:bell" : "mdi:bell-off",
+        icon_color: on ? this._config.color : "grey",
+        content: this._config.reminders_label,
+        tap_action: {
+          action: "perform-action",
+          perform_action: "switch.toggle",
+          target: { entity_id: swEntity },
+        },
+      });
+    }
+    for (const extra of this._config.extra_chips) {
+      chips.push(extra);
+    }
+    return chips;
   }
 
   async _render() {
@@ -146,6 +174,10 @@ class FamilyBoardViewCard extends HTMLElement {
       o: stateObj.attributes.options,
       s: stateObj.state,
       lang: this._hass?.locale?.language || "",
+      x: this._config.extra_chips.length,
+      r: this._config.show_reminders
+        ? this._hass.states[this._config.reminders_switch]?.state || ""
+        : "",
     });
     if (sig === this._lastSig && this._inner) {
       this._inner.hass = this._hass;
@@ -180,6 +212,8 @@ class FamilyBoardViewCard extends HTMLElement {
 const VIEW_EDITOR_SCHEMA = [
   { name: "entity", required: true, selector: { entity: { domain: "select" } } },
   { name: "color", selector: { text: {} } },
+  { name: "show_reminders", selector: { boolean: {} } },
+  { name: "reminders_switch", selector: { entity: { domain: "switch" } } },
 ];
 
 class FamilyBoardViewCardEditor extends HTMLElement {

@@ -39,6 +39,11 @@ EVENT_END_ENTITY = "datetime.familyboard_event_end"
 DAY_START_ENTITY = "datetime.familyboard_day_start"
 DAY_END_ENTITY = "datetime.familyboard_day_end"
 
+# Event countdown (FR-12) — user-editable label + target date,
+# rendered by the `familyboard-countdown-card` Lovelace card.
+COUNTDOWN_LABEL_ENTITY = "text.familyboard_countdown_label"
+COUNTDOWN_DATE_ENTITY = "datetime.familyboard_countdown_date"
+
 # Snooze / reminder engine
 STORAGE_KEY = "familyboard_reminders"
 STORAGE_VERSION = 1

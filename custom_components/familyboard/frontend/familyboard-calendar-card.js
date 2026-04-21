@@ -112,6 +112,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
       show_now_indicator: config.show_now_indicator !== false,
       show_navigation: config.show_navigation !== false,
       weather_entity: config.weather_entity || null,
+      weather_show_low: config.weather_show_low === true,
       locale: config.locale || "nl",
     };
     if (this._config.end_hour <= this._config.start_hour) {
@@ -386,6 +387,106 @@ class FamilyBoardCalendarCard extends HTMLElement {
     if (key === this._fetchKey) return;
     this._fetchKey = key;
     this._fetchEvents(ents, start, end);
+    this._maybeFetchWeather();
+  }
+
+  async _maybeFetchWeather() {
+    const ent = this._config.weather_entity;
+    if (!ent || !this._hass) return;
+    const now = Date.now();
+    if (
+      this._weather &&
+      this._weather.entityId === ent &&
+      now - this._weather.fetchedAt < 15 * 60 * 1000
+    ) {
+      return;
+    }
+    try {
+      const resp = await this._hass.callWS({
+        type: "call_service",
+        domain: "weather",
+        service: "get_forecasts",
+        service_data: { type: "daily" },
+        target: { entity_id: ent },
+        return_response: true,
+      });
+      const list = resp?.response?.[ent]?.forecast || [];
+      const byDate = {};
+      for (const f of list) {
+        const d = new Date(f.datetime);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        byDate[key] = {
+          condition: f.condition,
+          temperature: f.temperature,
+          templow: f.templow,
+        };
+      }
+      this._weather = { entityId: ent, fetchedAt: now, byDate };
+      this._render();
+    } catch (e) {
+      console.warn("familyboard-calendar-card: weather fetch failed", e);
+    }
+  }
+
+  _weatherForDay(date) {
+    if (!this._weather) return null;
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    return this._weather.byDate[key] || null;
+  }
+
+  _weatherIcon(condition) {
+    const map = {
+      "clear-night": "mdi:weather-night",
+      cloudy: "mdi:weather-cloudy",
+      exceptional: "mdi:alert-circle-outline",
+      fog: "mdi:weather-fog",
+      hail: "mdi:weather-hail",
+      lightning: "mdi:weather-lightning",
+      "lightning-rainy": "mdi:weather-lightning-rainy",
+      partlycloudy: "mdi:weather-partly-cloudy",
+      pouring: "mdi:weather-pouring",
+      rainy: "mdi:weather-rainy",
+      snowy: "mdi:weather-snowy",
+      "snowy-rainy": "mdi:weather-snowy-rainy",
+      sunny: "mdi:weather-sunny",
+      windy: "mdi:weather-windy",
+      "windy-variant": "mdi:weather-windy-variant",
+    };
+    return map[condition] || "mdi:weather-cloudy";
+  }
+
+  _weatherColor(condition) {
+    const map = {
+      sunny: "#fbc02d",
+      "clear-night": "#90caf9",
+      partlycloudy: "#fdd835",
+      cloudy: "#b0bec5",
+      fog: "#cfd8dc",
+      hail: "#81d4fa",
+      lightning: "#ffb300",
+      "lightning-rainy": "#ffb300",
+      pouring: "#1976d2",
+      rainy: "#42a5f5",
+      snowy: "#e1f5fe",
+      "snowy-rainy": "#b3e5fc",
+      windy: "#90a4ae",
+      "windy-variant": "#90a4ae",
+      exceptional: "#ef5350",
+    };
+    return map[condition] || "currentColor";
+  }
+
+  _renderWeather(date) {
+    const f = this._weatherForDay(date);
+    if (!f) return "";
+    const icon = this._weatherIcon(f.condition);
+    const color = this._weatherColor(f.condition);
+    const high = f.temperature != null ? `${Math.round(f.temperature)}\u00b0` : "";
+    if (this._config.weather_show_low && f.templow != null) {
+      const low = `${Math.round(f.templow)}\u00b0`;
+      return `<div class="fb-day-wx"><ha-icon icon="${icon}" style="color:${color}"></ha-icon><span class="fb-wx-temps"><span class="fb-wx-lo">${low}</span> / <span class="fb-wx-hi">${high}</span></span></div>`;
+    }
+    return `<div class="fb-day-wx"><ha-icon icon="${icon}" style="color:${color}"></ha-icon><span class="fb-wx-hi">${high}</span></div>`;
   }
 
   async _fetchEvents(entities, start, end) {
@@ -647,7 +748,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
         display: contents;
       }
       .fb-day-header {
-        padding: 6px 4px;
+        padding: 6px 8px;
         text-align: center;
         border-bottom: 1px solid var(--fb-border);
         font-size: 0.85em;
@@ -658,6 +759,20 @@ class FamilyBoardCalendarCard extends HTMLElement {
       .fb-day-header.today { color: var(--primary-color); font-weight: 600; }
       .fb-day-header .fb-dow { font-size: 0.75em; opacity: 0.7; }
       .fb-day-header .fb-dnum { font-size: 1.1em; }
+      .fb-day-header .fb-day-date { line-height: 1.15; }
+      .fb-day-wx {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.85em;
+        opacity: 0.95;
+      }
+      .fb-day-wx ha-icon { --mdc-icon-size: 20px; }
+      .fb-day-wx .fb-wx-lo { opacity: 0.65; }
 
       .fb-allday-row {
         display: contents;
@@ -747,6 +862,27 @@ class FamilyBoardCalendarCard extends HTMLElement {
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
+      }
+      .fb-event.fb-compact {
+        padding: 2px 6px;
+        line-height: 1.1;
+        display: flex;
+        align-items: center;
+      }
+      .fb-event.fb-compact .fb-ev-line {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.78em;
+        width: 100%;
+      }
+      .fb-event.fb-compact .fb-ev-time {
+        font-weight: 600;
+        margin-right: 4px;
+      }
+      .fb-event.fb-compact .fb-ev-title {
+        font-weight: 400;
+        display: inline;
       }
       .fb-event.fb-clipped-top::before,
       .fb-event.fb-clipped-bot::after {
@@ -893,9 +1029,13 @@ class FamilyBoardCalendarCard extends HTMLElement {
     for (let i = 0; i < numDays; i++) {
       const d = days[i];
       const isToday = this._isSameDay(d, today);
-      dayHeaders += `<div class="fb-day-header${isToday ? " today" : ""}">
-        <div class="fb-dow">${d.toLocaleDateString(cfg.locale, { weekday: "short" })}</div>
-        <div class="fb-dnum">${d.getDate()}</div>
+      const wx = this._renderWeather(d);
+      dayHeaders += `<div class="fb-day-header${isToday ? " today" : ""}${wx ? " has-wx" : ""}">
+        <div class="fb-day-date">
+          <div class="fb-dow">${d.toLocaleDateString(cfg.locale, { weekday: "short" })}</div>
+          <div class="fb-dnum">${d.getDate()}</div>
+        </div>
+        ${wx}
       </div>`;
       const adHtml = eventsByDay[i].allDay
         .map((ev, idx) => this._renderAllDayBlock(ev, idx))
@@ -946,9 +1086,8 @@ class FamilyBoardCalendarCard extends HTMLElement {
       // Smart-skip endHour label too if no event overlaps the previous hour
       if (h === endHour && occupiedHours && !occupiedHours.has(h - 1)) continue;
       const top = (h - startHour) * hourHeight;
-      let translate = "translateY(-50%)";
-      if (h === startHour) translate = "translateY(0)";
-      else if (h === endHour) translate = "translateY(-100%)";
+      let translate = "translateY(2px)";
+      if (h === endHour) translate = "translateY(-100%)";
       const label = h === 24 ? "24:00" : `${String(h).padStart(2, "0")}:00`;
       html += `<div class="fb-hour-label" style="position:absolute;top:${top}px;right:4px;transform:${translate};">${label}</div>`;
     }
@@ -1084,14 +1223,17 @@ class FamilyBoardCalendarCard extends HTMLElement {
     if (visibleEnd <= visibleStart) return ""; // entirely outside range
 
     const top = ((visibleStart - startHour * 60) / 60) * hourHeight;
-    const height = Math.max(((visibleEnd - visibleStart) / 60) * hourHeight, 14);
+    const durationMin = visibleEnd - visibleStart;
+    const height = Math.max((durationMin / 60) * hourHeight, 22);
     const widthPct = 100 / slot.cols;
     const leftPct = slot.col * widthPct;
 
     const clippedTop = startMin < startHour * 60;
     const clippedBot = endMin > endHour * 60;
     const reminderCls = ev.isReminder ? " fb-reminder" : "";
-    const cls = `fb-event${clippedTop ? " fb-clipped-top" : ""}${clippedBot ? " fb-clipped-bot" : ""}${reminderCls}`;
+    const compact = !ev.allDay && durationMin <= 30;
+    const compactCls = compact ? " fb-compact" : "";
+    const cls = `fb-event${clippedTop ? " fb-clipped-top" : ""}${clippedBot ? " fb-clipped-bot" : ""}${reminderCls}${compactCls}`;
 
     const bg = this._eventBackground(ev);
     const time = ev.allDay ? "" : `${this._formatTime(ev.startDate)}`;
@@ -1101,12 +1243,15 @@ class FamilyBoardCalendarCard extends HTMLElement {
       ? `data-todo="${this._escape(ev.todoEntity || "")}" data-uid="${this._escape(ev.uid || "")}"`
       : `data-sources="${encodeURIComponent(JSON.stringify(ev.sources))}"`;
 
+    const inner = compact
+      ? `<div class=\"fb-ev-line\"><span class=\"fb-ev-time\">${time}</span> <span class=\"fb-ev-title\">${title}</span></div>`
+      : `<div class=\"fb-ev-time\">${time}</div><div class=\"fb-ev-title\">${title}</div>`;
+
     return `
       <div class="${cls}"
            ${dataAttr}
            style="top:${top}px;height:${height}px;left:calc(${leftPct}% + 1px);width:calc(${widthPct}% - 4px);background:${bg};">
-        <div class="fb-ev-time">${time}</div>
-        <div class="fb-ev-title">${title}</div>
+        ${inner}
       </div>
     `;
   }
@@ -1188,6 +1333,7 @@ const CALENDAR_EDITOR_SCHEMA = [
   { name: "filter_entity", selector: { entity: { domain: "select" } } },
   { name: "view_entity", selector: { entity: { domain: "select" } } },
   { name: "weather_entity", selector: { entity: { domain: "weather" } } },
+  { name: "weather_show_low", selector: { boolean: {} } },
   { name: "reminders_entity", selector: { entity: {} } },
   { name: "config_entity", selector: { entity: { domain: "sensor" } } },
   { name: "show_now_indicator", selector: { boolean: {} } },

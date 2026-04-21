@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **FR-12 Event countdown**: new `text.familyboard_countdown_label`
+  and `datetime.familyboard_countdown_date` entities and a
+  `custom:familyboard-countdown-card` Lovelace card. The card shows
+  "⏳ Nog N dagen tot LABEL!", "⏳ Morgen is het LABEL!" or
+  "🎉 Vandaag is het LABEL!", hides itself when no label is set,
+  and auto-clears the label one tick after the date passes. Tap the
+  gear icon to edit label + date directly on the kiosk (no admin
+  login needed).
 - Visual editors for every FamilyBoard custom card
   (`progress`, `chores`, `calendar`, `filter`, `view`). Each card now
   exposes `getConfigElement()`/`getStubConfig()` returning a tiny
