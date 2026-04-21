@@ -103,14 +103,14 @@ class FamilyBoardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_import(self, import_data: dict[str, Any]) -> FlowResult:
         """Import options from YAML.
 
-        ``import_data`` is the validated ``familyboard:`` block.
+        ``import_data`` is the validated ``familyboard:`` block. Existing
+        UI-only options (e.g. ``meal_calendar`` set via the General step)
+        are preserved when YAML does not explicitly set them.
         """
         await self.async_set_unique_id(DOMAIN)
-        # If an entry already exists, refresh its options from YAML.
         for entry in self._async_current_entries():
-            self.hass.config_entries.async_update_entry(
-                entry, options=_normalize_options(import_data)
-            )
+            merged = _normalize_options(import_data, existing=dict(entry.options))
+            self.hass.config_entries.async_update_entry(entry, options=merged)
             return self.async_abort(reason="single_instance_allowed")
         return self.async_create_entry(
             title=DEVICE_NAME,
@@ -127,8 +127,15 @@ class FamilyBoardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return FamilyBoardOptionsFlow()
 
 
-def _normalize_options(raw: dict[str, Any]) -> dict[str, Any]:
-    """Coerce a (possibly-partial) YAML/options dict into the options shape."""
+def _normalize_options(
+    raw: dict[str, Any], existing: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Coerce a (possibly-partial) YAML/options dict into the options shape.
+
+    When ``existing`` is provided, UI-only keys absent from ``raw`` are
+    carried over so a YAML re-import does not wipe values configured
+    through the options flow (e.g. ``meal_calendar``).
+    """
     base = default_options()
     base.update(
         {
@@ -138,6 +145,11 @@ def _normalize_options(raw: dict[str, Any]) -> dict[str, Any]:
             "shared_chores": list(raw.get("shared_chores") or []),
         }
     )
+    meal = raw.get("meal_calendar")
+    if not meal and existing:
+        meal = existing.get("meal_calendar")
+    if meal:
+        base["meal_calendar"] = meal
     return base
 
 

@@ -15,6 +15,13 @@ frontend build step. Target HA: 2026.4+.
   `RestoreEntity` for persistence across restarts.
 - Coordinator-driven refresh; per-tick housekeeping (e.g. trash chore
   auto-completion) runs on coordinator refresh, not separate timers.
+- **Options-flow ↔ YAML import contract.** YAML is re-imported on every HA
+  start via `async_step_import` → `_normalize_options`. Any new options-flow
+  key (set only via the UI) **must** be either listed in `_normalize_options`
+  or carried over from the existing entry's options, otherwise it gets wiped
+  on the next restart. When adding a new options key, update both
+  `schemas.OPTIONS_SCHEMA` and `_normalize_options` (the `existing=` merge
+  branch) together.
 
 ## Config schema (HA `configuration.yaml`)
 
