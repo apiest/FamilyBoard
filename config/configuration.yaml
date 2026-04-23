@@ -1,0 +1,33 @@
+# Minimal Home Assistant config for FamilyBoard development.
+#
+# We deliberately do NOT pre-configure FamilyBoard or its backing
+# calendar/todo entities here — first boot exercises the real end-user
+# flow:
+#
+#   1. Visit http://localhost:8123 and create the owner account.
+#   2. Settings → Devices & services → Add integration:
+#        - Local Calendar  → name "Dev A"   (entity: calendar.dev_a)
+#        - Local Calendar  → name "Dev B"   (entity: calendar.dev_b)
+#        - Local To-do     → name "Dev A"   (entity: todo.dev_a)
+#        - Local To-do     → name "Dev B"   (entity: todo.dev_b)
+#        - Local To-do     → name "Trash"   (entity: todo.trash)
+#   3. Settings → Devices & services → Add integration → FamilyBoard,
+#      and configure two members (Dev_A / Dev_B) wired to the entities
+#      above.
+#
+# After first boot the .storage/ directory persists this setup across
+# container rebuilds (it lives under <repo>/config/.storage/, which is
+# git-ignored).
+
+default_config:
+
+homeassistant:
+  debug: true
+
+logger:
+  default: info
+  logs:
+    custom_components.familyboard: debug
+    homeassistant.helpers.data_entry_flow: debug
+    homeassistant.data_entry_flow: debug
+    homeassistant.components.config.config_entries: debug

@@ -1,0 +1,200 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "FamilyBoard",
+        "description": "FamilyBoard wordt als singleton-entry aangemaakt. Open daarna Instellingen \u2192 Apparaten en services \u2192 FamilyBoard \u2192 Configureer om leden, afval en gedeelde items toe te voegen."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Er wordt maar \u00e9\u00e9n FamilyBoard-instantie ondersteund."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "FamilyBoard",
+        "description": "Wat wil je configureren?",
+        "menu_options": {
+          "members": "Leden",
+          "trash": "Afval",
+          "shared_calendars": "Gedeelde agenda's",
+          "shared_chores": "Gedeelde taken",
+          "general": "Algemene instellingen",
+          "save": "Opslaan en sluiten"
+        }
+      },
+      "members": {
+        "title": "Leden",
+        "description": "Kies een lid om te bewerken, voeg een nieuw lid toe, of ga terug. ({count} geconfigureerd)",
+        "data": {"action": "Actie"}
+      },
+      "member_action": {
+        "title": "Lid: {name}",
+        "data": {"action": "Actie"}
+      },
+      "member_edit": {
+        "title": "Leden details",
+        "data": {
+          "name": "Naam",
+          "calendar": "Hoofdagenda",
+          "calendar_label": "Agenda-label",
+          "calendar_default_summary": "Standaard titel",
+          "calendar_default_description": "Standaard omschrijving",
+          "color": "Kleur (hex)",
+          "person": "Person-entiteit",
+          "notify": "Notify target (mobile_app_*)",
+          "chores": "Takenlijsten"
+        }
+      },
+      "member_extras": {
+        "title": "Extra agenda's",
+        "data": {"action": "Actie"}
+      },
+      "member_extra_edit": {
+        "title": "Extra agenda",
+        "data": {
+          "entity": "Agenda-entiteit",
+          "label": "Label",
+          "default_summary": "Standaard titel",
+          "default_description": "Standaard omschrijving",
+          "__remove__": "Verwijder dit item"
+        }
+      },
+      "trash": {
+        "title": "Afval",
+        "data": {"action": "Actie"}
+      },
+      "trash_edit": {
+        "title": "Afvalsoort",
+        "data": {
+          "type": "Type",
+          "sensor": "Sensor",
+          "label": "Label",
+          "color": "Kleur (hex)",
+          "emoji": "Emoji",
+          "__remove__": "Verwijder dit item"
+        }
+      },
+      "shared_calendars": {
+        "title": "Gedeelde agenda's",
+        "data": {"action": "Actie"}
+      },
+      "shared_calendar_edit": {
+        "title": "Gedeelde agenda",
+        "data": {
+          "entity": "Agenda-entiteit",
+          "members": "Leden",
+          "name": "Naam",
+          "color": "Kleur (hex)",
+          "__remove__": "Verwijder dit item"
+        }
+      },
+      "shared_chores": {
+        "title": "Gedeelde taken",
+        "data": {"action": "Actie"}
+      },
+      "shared_chore_edit": {
+        "title": "Gedeelde taak",
+        "data": {
+          "entity": "Todo-entiteit",
+          "members": "Leden",
+          "type": "Type",
+          "name": "Naam",
+          "color": "Kleur (hex)",
+          "__remove__": "Verwijder dit item"
+        }
+      },
+      "general": {
+        "title": "Algemene instellingen",
+        "description": "Optionele integratie-brede instellingen.",
+        "data": {
+          "meal_calendar": "Maaltijdenagenda"
+        }
+      }
+    },
+    "error": {
+      "base": "Ongeldige invoer: {error}"
+    }
+  },
+  "entity": {
+    "calendar": {
+      "alles": { "name": "Alles" },
+      "trash": { "name": "Afval" }
+    },
+    "sensor": {
+      "chores": { "name": "Taken" },
+      "compliment": { "name": "Begroeting" },
+      "meals": { "name": "Maaltijden" },
+      "recent_meals": { "name": "Recente maaltijden" },
+      "members": { "name": "Leden" },
+      "progress": { "name": "Voortgang" }
+    },
+    "binary_sensor": {
+      "meals_unplanned": { "name": "Maaltijden te plannen" }
+    },
+    "select": {
+      "calendar_filter": { "name": "Kalenderfilter" },
+      "view": {
+        "name": "Weergave",
+        "state": {
+          "today": "Vandaag",
+          "tomorrow": "Morgen",
+          "week": "Week",
+          "two_weeks": "2 Weken",
+          "month": "Maand"
+        }
+      },
+      "layout": {
+        "name": "Layout",
+        "state": {
+          "list": "Lijst",
+          "agenda": "Agenda"
+        }
+      },
+      "event_member": { "name": "Event wie" },
+      "event_calendar": { "name": "Event agenda" }
+    },
+    "switch": {
+      "event_all_day": { "name": "Event hele dag" },
+      "show_reminders": { "name": "Herinneringen tonen" }
+    },
+    "text": {
+      "event_title": { "name": "Event titel" },
+      "countdown_label": { "name": "Aftellabel" }
+    },
+    "datetime": {
+      "event_start": { "name": "Event start" },
+      "event_end": { "name": "Event einde" },
+      "day_start": { "name": "Dag start" },
+      "day_end": { "name": "Dag einde" },
+      "countdown_date": { "name": "Afteldatum" }
+    }
+  },
+  "services": {
+    "add_event": {
+      "name": "Kalender-event toevoegen",
+      "description": "Maakt een kalender-event aan met de FamilyBoard add-event formulier-entiteiten en reset het formulier."
+    },
+    "snooze_test": {
+      "name": "Snooze-herinnering testen",
+      "description": "Forceer een snooze-notificatie voor een opgegeven task uid (voor testdoeleinden).",
+      "fields": {
+        "uid": {
+          "name": "Task UID",
+          "description": "De Google Tasks uid van de taak waarvoor een herinnering moet worden afgevuurd."
+        }
+      }
+    },
+    "cancel_reminder": {
+      "name": "Snooze-herinnering annuleren",
+      "description": "Annuleer een actieve snooze-herinnering voor een opgegeven task uid.",
+      "fields": {
+        "uid": {
+          "name": "Task UID",
+          "description": "De Google Tasks uid van de herinnering die geannuleerd moet worden."
+        }
+      }
+    }
+  }
+}

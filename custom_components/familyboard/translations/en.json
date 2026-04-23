@@ -1,0 +1,200 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "FamilyBoard",
+        "description": "FamilyBoard will be created as a singleton entry. After it is created, open it under Settings \u2192 Devices & Services \u2192 FamilyBoard \u2192 Configure to add members, trash collections and shared items."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only one FamilyBoard instance is supported."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "FamilyBoard",
+        "description": "What do you want to configure?",
+        "menu_options": {
+          "members": "Members",
+          "trash": "Trash collections",
+          "shared_calendars": "Shared calendars",
+          "shared_chores": "Shared chores",
+          "general": "General settings",
+          "save": "Save and exit"
+        }
+      },
+      "members": {
+        "title": "Members",
+        "description": "Pick a member to edit, add a new one, or go back. ({count} configured)",
+        "data": {"action": "Action"}
+      },
+      "member_action": {
+        "title": "Member: {name}",
+        "data": {"action": "Action"}
+      },
+      "member_edit": {
+        "title": "Member details",
+        "data": {
+          "name": "Name",
+          "calendar": "Primary calendar",
+          "calendar_label": "Calendar label",
+          "calendar_default_summary": "Default summary",
+          "calendar_default_description": "Default description",
+          "color": "Color (hex)",
+          "person": "Person entity",
+          "notify": "Notify target (mobile_app_*)",
+          "chores": "Chore lists"
+        }
+      },
+      "member_extras": {
+        "title": "Extra calendars",
+        "data": {"action": "Action"}
+      },
+      "member_extra_edit": {
+        "title": "Extra calendar",
+        "data": {
+          "entity": "Calendar entity",
+          "label": "Label",
+          "default_summary": "Default summary",
+          "default_description": "Default description",
+          "__remove__": "Remove this entry"
+        }
+      },
+      "trash": {
+        "title": "Trash collections",
+        "data": {"action": "Action"}
+      },
+      "trash_edit": {
+        "title": "Trash collection",
+        "data": {
+          "type": "Type",
+          "sensor": "Sensor",
+          "label": "Label",
+          "color": "Color (hex)",
+          "emoji": "Emoji",
+          "__remove__": "Remove this entry"
+        }
+      },
+      "shared_calendars": {
+        "title": "Shared calendars",
+        "data": {"action": "Action"}
+      },
+      "shared_calendar_edit": {
+        "title": "Shared calendar",
+        "data": {
+          "entity": "Calendar entity",
+          "members": "Members",
+          "name": "Name",
+          "color": "Color (hex)",
+          "__remove__": "Remove this entry"
+        }
+      },
+      "shared_chores": {
+        "title": "Shared chores",
+        "data": {"action": "Action"}
+      },
+      "shared_chore_edit": {
+        "title": "Shared chore",
+        "data": {
+          "entity": "Todo entity",
+          "members": "Members",
+          "type": "Type",
+          "name": "Name",
+          "color": "Color (hex)",
+          "__remove__": "Remove this entry"
+        }
+      },
+      "general": {
+        "title": "General settings",
+        "description": "Optional integration-wide settings.",
+        "data": {
+          "meal_calendar": "Meal calendar"
+        }
+      }
+    },
+    "error": {
+      "base": "Invalid input: {error}"
+    }
+  },
+  "entity": {
+    "calendar": {
+      "alles": { "name": "All" },
+      "trash": { "name": "Trash" }
+    },
+    "sensor": {
+      "chores": { "name": "Chores" },
+      "compliment": { "name": "Greeting" },
+      "meals": { "name": "Meals" },
+      "recent_meals": { "name": "Recent meals" },
+      "members": { "name": "Members" },
+      "progress": { "name": "Progress" }
+    },
+    "binary_sensor": {
+      "meals_unplanned": { "name": "Meals to plan" }
+    },
+    "select": {
+      "calendar_filter": { "name": "Calendar filter" },
+      "view": {
+        "name": "View",
+        "state": {
+          "today": "Today",
+          "tomorrow": "Tomorrow",
+          "week": "Week",
+          "two_weeks": "2 Weeks",
+          "month": "Month"
+        }
+      },
+      "layout": {
+        "name": "Layout",
+        "state": {
+          "list": "List",
+          "agenda": "Agenda"
+        }
+      },
+      "event_member": { "name": "Event member" },
+      "event_calendar": { "name": "Event calendar" }
+    },
+    "switch": {
+      "event_all_day": { "name": "Event all day" },
+      "show_reminders": { "name": "Show reminders" }
+    },
+    "text": {
+      "event_title": { "name": "Event title" },
+      "countdown_label": { "name": "Countdown label" }
+    },
+    "datetime": {
+      "event_start": { "name": "Event start" },
+      "event_end": { "name": "Event end" },
+      "day_start": { "name": "Day start" },
+      "day_end": { "name": "Day end" },
+      "countdown_date": { "name": "Countdown date" }
+    }
+  },
+  "services": {
+    "add_event": {
+      "name": "Add calendar event",
+      "description": "Create a calendar event using the FamilyBoard add-event form entities and reset the form."
+    },
+    "snooze_test": {
+      "name": "Test snooze reminder",
+      "description": "Force-fire a snooze notification for a given task uid (for testing).",
+      "fields": {
+        "uid": {
+          "name": "Task UID",
+          "description": "The Google Tasks uid of the task to fire a reminder for."
+        }
+      }
+    },
+    "cancel_reminder": {
+      "name": "Cancel snooze reminder",
+      "description": "Cancel an active snooze reminder for a given task uid.",
+      "fields": {
+        "uid": {
+          "name": "Task UID",
+          "description": "The Google Tasks uid of the reminder to cancel."
+        }
+      }
+    }
+  }
+}

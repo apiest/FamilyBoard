@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Format + lint, matching what CI enforces.
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+ruff format custom_components/familyboard tests
+ruff check --fix custom_components/familyboard tests

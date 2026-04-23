@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Launch a development Home Assistant instance with the FamilyBoard
+# custom component on PYTHONPATH. Mirrors the pattern from
+# ludeeus/integration_blueprint so we don't need bind mounts or
+# symlinks: HA discovers <repo>/custom_components/familyboard via
+# PYTHONPATH while keeping its config in <repo>/config.
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+# Bootstrap a config directory on first run.
+if [[ ! -d "${PWD}/config" ]]; then
+    mkdir -p "${PWD}/config"
+    hass --config "${PWD}/config" --script ensure_config
+fi
+
+# Expose <repo>/custom_components AND <config>/custom_components to HA's
+# `custom_components` namespace package. The first hosts familyboard
+# (developed in-tree); the second hosts HACS or any other integration
+# installed via the UI inside the dev container.
+export PYTHONPATH="${PYTHONPATH}:${PWD}:${PWD}/config"
+
+hass --config "${PWD}/config" --debug
