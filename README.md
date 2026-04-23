@@ -3,9 +3,14 @@
 [![hacs][hacs-badge]][hacs-url]
 [![hassfest][hassfest-badge]][hassfest-url]
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=apiest&repository=FamilyBoard&category=integration)
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=familyboard)
+
 Family dashboard integration for Home Assistant. Consolidates calendar
 views, chore tracking, trash collection and notification reminders into
 a unified family dashboard with reusable Lovelace cards.
+
+![FamilyBoard dashboard screenshot](docs/screenshot.png)
 
 ## Features
 
@@ -22,6 +27,8 @@ a unified family dashboard with reusable Lovelace cards.
 ## Installation
 
 ### HACS (recommended)
+
+Click the badge at the top of this page, or follow the manual steps:
 
 1. In HACS, choose **Integrations → ⋮ → Custom repositories** and add `https://github.com/apiest/FamilyBoard` as an _Integration_.
 2. Search for **FamilyBoard** in HACS and install.
