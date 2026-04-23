@@ -1,0 +1,64 @@
+# FamilyBoard Theme — Skylight-inspired dark theme
+#
+# Installation:
+# 1. Copy this file to your HA config/themes/ folder
+# 2. In configuration.yaml, ensure you have:
+#      frontend:
+#        themes: !include_dir_merge_named themes
+# 3. Restart HA
+# 4. Apply the theme: Settings → Dashboards → FamilyBoard → Edit → View config
+#    → Set theme to "familyboard"
+#
+# Or apply per-user: Profile → Theme → familyboard
+
+familyboard:
+  # --- Background ---
+  lovelace-background: "linear-gradient(160deg, #0d1117 0%, #161b22 40%, #1a1f2e 100%)"
+  primary-background-color: "#0d1117"
+  secondary-background-color: "#161b22"
+  card-background-color: "rgba(255, 255, 255, 0.04)"
+  ha-card-background: "rgba(255, 255, 255, 0.04)"
+  ha-card-border-radius: "16px"
+  ha-card-box-shadow: "none"
+  ha-card-border-color: "rgba(255, 255, 255, 0.06)"
+  ha-card-border-width: "1px"
+
+  # --- Typography ---
+  primary-font-family: "'Inter', 'Segoe UI', -apple-system, sans-serif"
+  primary-text-color: "#e6edf3"
+  secondary-text-color: "#8b949e"
+  disabled-text-color: "#484f58"
+
+  # --- Accent colors ---
+  primary-color: "#4A90D9"
+  accent-color: "#4A90D9"
+  light-primary-color: "#6aafef"
+  dark-primary-color: "#2e6ba6"
+
+  # --- States ---
+  state-active-color: "#4A90D9"
+  state-icon-active-color: "#4A90D9"
+  state-icon-color: "#8b949e"
+  switch-checked-color: "#4A90D9"
+
+  # --- Header / Sidebar (hidden by kiosk, but in case) ---
+  app-header-background-color: "#0d1117"
+  app-header-text-color: "#e6edf3"
+  sidebar-background-color: "#0d1117"
+  sidebar-text-color: "#e6edf3"
+  sidebar-icon-color: "#8b949e"
+  sidebar-selected-icon-color: "#4A90D9"
+  sidebar-selected-text-color: "#e6edf3"
+
+  # --- Dividers ---
+  divider-color: "rgba(255, 255, 255, 0.06)"
+
+  # --- Chips (Mushroom) ---
+  ha-chip-background: "rgba(255, 255, 255, 0.08)"
+  ha-chip-text-color: "#e6edf3"
+
+  # --- Badges ---
+  ha-label-badge-color: "#4A90D9"
+
+  # --- Sections view ---
+  ha-view-background: "transparent"
