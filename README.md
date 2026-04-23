@@ -12,6 +12,42 @@ a unified family dashboard with reusable Lovelace cards.
 
 ![FamilyBoard dashboard screenshot](docs/screenshot.png)
 
+> Screenshot is anonymized (PII removed) and the empty cells were
+> demo-filled with [Gemini Nano Banana](https://gemini.google.com/) so
+> the layout reads at a glance.
+
+## Why
+
+My family is like most households: we struggle with the same small questions every single day. *What’s happening this afternoon? What are we eating? Whose turn is it to take out the trash?* When you factor in **ADHD**, these questions aren't just trivial—they are obstacles. For my family members, "out of sight" literally means "out of mind." Cluttered phone apps, hidden notifications, and fragmented calendars create a constant mental tax.
+
+**I built FamilyBoard together with my family** to serve as an **external brain** for our home. Because we designed it as a team, every feature is tuned to how we actually live. It moves the "Status Update" fatigue away from shouting across the kitchen and into a calm, persistent display on the wall. 
+
+It is designed for:
+* **Visual Persistence:** Keeping chores and events visible so they don't disappear from the mind (supporting object permanence).
+* **Predictability:** Surfacing trash days and meal plans before the "what now?" panic sets in.
+* **Cognitive Ease:** A zero-scroll, zero-tap interface that passes the **"Glance Test"**—if you can't see the answer while walking past the tablet with a laundry basket, the UI has failed.
+
+FamilyBoard doesn't ask my family to change how they function; it changes the environment to better support how they think.
+
+## How it works
+
+- **Bring your own calendar and tasks.** Put events in whatever
+  calendar app you already use (Google, iCloud, CalDAV) and chores in
+  whatever to-do list you already use (Google Tasks, Microsoft To Do, a
+  local HA `todo`). Sync them into Home Assistant once —
+  bidirectionally if you want — and FamilyBoard reads from there. No
+  second place to manage anything.
+- **One unified overview.** Per-member calendars, shared family
+  calendars, trash collection, chores and reminders are merged into a
+  single screen. Filter on the fly: just one person, just today, just
+  chores, hide reminders that are already shown elsewhere.
+- **Reminders live where you want them.** Tasks can render inside the
+  calendar grid as time-blocks, or outside it as a separate reminders
+  list — toggleable per dashboard so you don't see the same item twice.
+- **Native HA only.** No `input_*` helpers, no custom storage backend.
+  Everything is a `select` / `text` / `switch` / `datetime` entity with
+  proper restore-state and config-flow support.
+
 ## Features
 
 - **Per-member calendar proxies** — primary + extra calendars, Google Tasks filtered out automatically.
