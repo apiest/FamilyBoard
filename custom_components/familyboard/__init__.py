@@ -356,8 +356,12 @@ async def _async_sync_lovelace_resources(hass: HomeAssistant) -> None:
 
 
 async def _async_check_lovelace_dependencies(hass: HomeAssistant) -> None:
-    """Warn if required HACS frontend deps (mushroom, card-mod) are missing."""
-    required = {"mushroom": "Mushroom Cards", "card-mod": "card-mod"}
+    """Warn if required HACS frontend deps (mushroom, card-mod, bubble) are missing."""
+    required = {
+        "mushroom": "Mushroom Cards",
+        "card-mod": "card-mod",
+        "bubble-card": "Bubble Card",
+    }
     found: set[str] = set()
 
     lovelace_data = hass.data.get("lovelace")
