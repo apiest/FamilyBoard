@@ -296,11 +296,10 @@ members_entity: sensor.familyboard_members
 
 ## Dashboard options
 
-There are three ways to use FamilyBoard in your dashboards:
+There are two ways to use FamilyBoard in your dashboards:
 
 1. **Compose your own** — add the cards listed above into any dashboard, any view, any layout. The cards are independent; mix freely with core/HACS cards.
-2. **Static template** — `dashboards/familyboard.yaml` in this repo provides a curated full layout. Reference it from `configuration.yaml` under `lovelace.dashboards`.
-3. **Dashboard strategy** — `strategy: type: custom:familyboard` auto-generates a sections-view dashboard from the current members, chores and calendars sensors. Add or remove a member and the dashboard updates automatically. "Take Control" in the UI converts the generated layout back into editable YAML for further tweaking.
+2. **Dashboard strategy** — `strategy: type: custom:familyboard` auto-generates a sections-view dashboard from the current members, chores and calendars sensors. Add or remove a member and the dashboard updates automatically. "Take Control" in the UI converts the generated layout back into editable YAML for further tweaking.
 
 ### Strategy example
 
@@ -344,10 +343,15 @@ is fully optional — the cards work with any theme.
 
 ## Dependencies
 
-Required HACS frontend resources (the integration warns if missing):
+The FamilyBoard cards themselves are self-contained, but the bundled
+dashboard strategy (`strategy: custom:familyboard`) renders a few
+third-party cards. Install these from HACS — the integration logs a
+warning and posts a persistent notification if any are missing:
 
 - [Mushroom Cards](https://github.com/piitaya/lovelace-mushroom)
 - [card-mod](https://github.com/thomasloven/lovelace-card-mod)
+- [Bubble Card](https://github.com/Clooos/Bubble-Card) — used for the
+  *Add event* and *Meal picker* pop-ups.
 
 ## Development
 
