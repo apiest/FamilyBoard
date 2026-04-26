@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Native month view in `familyboard-calendar-card` (replaces the Phase 3
+  placeholder): 6×7 grid, max 3 event pills per cell with `+N meer` overflow,
+  multi-member gradient pills, weather badge, today/other-month/weekend
+  styling.
+- Multi-day events render as continuous bars across the month grid (Google
+  Calendar style), with `‹` / `›` arrows on segments that continue into the
+  previous or next week.
+- New view options: `today_tomorrow` (today + tomorrow side-by-side) and
+  `work_week` (Mon–Fri of current week). Wired through the calendar card,
+  chores card, list-mode strategy and translations (NL/EN).
+- Week start in `familyboard-calendar-card` now follows the HA user profile
+  (`hass.locale.firstWeekday`) for week, two-weeks and month grid headers.
+  Werkweek blijft altijd ma–vr.
+- `familyboard-view-card` accepts `hidden_options:` and `visible_options:`
+  to hide/whitelist chips per dashboard without touching the select entity.
+
 ## [0.1.0] - 2026-04-23
 
 Initial public release.

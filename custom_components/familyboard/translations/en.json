@@ -140,7 +140,9 @@
         "state": {
           "today": "Today",
           "tomorrow": "Tomorrow",
+          "today_tomorrow": "Today + Tomorrow",
           "week": "Week",
+          "work_week": "Work week",
           "two_weeks": "2 Weeks",
           "month": "Month"
         }

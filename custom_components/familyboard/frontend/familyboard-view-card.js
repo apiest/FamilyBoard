@@ -17,6 +17,13 @@
  *   color: amber                                 # optional, selected color
  *   show_reminders: true                         # optional, append a Herinneringen toggle chip
  *   reminders_switch: switch.familyboard_show_reminders  # optional, entity backing the chip
+ *   hidden_options:                              # optional, hide chips for these option keys
+ *     - tomorrow
+ *     - work_week
+ *   visible_options:                             # optional, whitelist (wins over hidden_options)
+ *     - today
+ *     - week
+ *     - month
  *   extra_chips: []                              # optional, raw mushroom-chip dicts appended
  */
 
@@ -26,7 +33,9 @@ const DEFAULT_REMINDERS_SWITCH = "switch.familyboard_show_reminders";
 const DEFAULT_ICONS = {
   today: "mdi:calendar-today",
   tomorrow: "mdi:calendar-arrow-right",
+  today_tomorrow: "mdi:calendar-multiple",
   week: "mdi:calendar-week",
+  work_week: "mdi:briefcase-clock",
   two_weeks: "mdi:calendar-range",
   month: "mdi:calendar-month",
   list: "mdi:view-list",
@@ -75,8 +84,13 @@ class FamilyBoardViewCard extends HTMLElement {
       reminders_switch: config.reminders_switch || DEFAULT_REMINDERS_SWITCH,
       reminders_label: config.reminders_label || "Herinneringen",
       extra_chips: Array.isArray(config.extra_chips) ? config.extra_chips : [],
+      hidden_options: Array.isArray(config.hidden_options) ? config.hidden_options : [],
+      visible_options: Array.isArray(config.visible_options) ? config.visible_options : null,
       ...config,
     };
+    // Make sure caller's config doesn't accidentally override the normalized arrays.
+    this._config.hidden_options = Array.isArray(config.hidden_options) ? config.hidden_options : [];
+    this._config.visible_options = Array.isArray(config.visible_options) ? config.visible_options : null;
   }
 
   set hass(hass) {
@@ -109,8 +123,15 @@ class FamilyBoardViewCard extends HTMLElement {
   }
 
   _buildChips(stateObj) {
-    const options = stateObj?.attributes?.options || [];
+    const allOptions = stateObj?.attributes?.options || [];
     const current = stateObj?.state;
+    let options;
+    if (this._config.visible_options && this._config.visible_options.length) {
+      // Whitelist + preserve user-specified order; only keep entries the entity actually has.
+      options = this._config.visible_options.filter((o) => allOptions.includes(o));
+    } else {
+      options = allOptions.filter((o) => !this._config.hidden_options.includes(o));
+    }
     const chips = options.map((opt) => ({
       type: "template",
       icon: this._config.icons[opt] || "mdi:circle-outline",
@@ -175,6 +196,8 @@ class FamilyBoardViewCard extends HTMLElement {
       s: stateObj.state,
       lang: this._hass?.locale?.language || "",
       x: this._config.extra_chips.length,
+      h: this._config.hidden_options,
+      v: this._config.visible_options,
       r: this._config.show_reminders
         ? this._hass.states[this._config.reminders_switch]?.state || ""
         : "",
