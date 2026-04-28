@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Native month view in `familyboard-calendar-card` (replaces the Phase 3
-  placeholder): 6×7 grid, max 3 event pills per cell with `+N meer` overflow,
-  multi-member gradient pills, weather badge, today/other-month/weekend
-  styling.
+  placeholder): 6×7 grid with multi-member gradient pills, weather badge and
+  today/other-month/weekend styling. Week rows grow to fit all events — no
+  more `+N meer` overflow truncation.
+- `familyboard-calendar-card`: `show_navigation: false` now actually hides
+  the prev/today/next buttons in the card header.
 - Multi-day events render as continuous bars across the month grid (Google
   Calendar style), with `‹` / `›` arrows on segments that continue into the
   previous or next week.

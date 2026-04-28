@@ -1037,7 +1037,9 @@ class FamilyBoardCalendarCard extends HTMLElement {
       .fb-month-week {
         display: grid;
         grid-template-columns: repeat(7, minmax(0, 1fr));
-        grid-template-rows: 24px repeat(3, 18px) 14px;
+        grid-template-rows: 24px;
+        grid-auto-rows: 18px;
+        padding-bottom: 4px;
         position: relative;
         border-bottom: 1px solid var(--fb-border);
       }
@@ -1096,15 +1098,6 @@ class FamilyBoardCalendarCard extends HTMLElement {
       }
       .fb-mc-bar.fb-mc-cont-prev { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
       .fb-mc-bar.fb-mc-cont-next { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
-      .fb-mc-more {
-        grid-row: 5;
-        font-size: 0.65em;
-        color: var(--fb-muted);
-        padding: 0 4px;
-        text-align: left;
-        z-index: 1;
-        pointer-events: none;
-      }
 
       /* List layout */
       .fb-list { display: flex; flex-direction: column; }
@@ -1206,9 +1199,13 @@ class FamilyBoardCalendarCard extends HTMLElement {
       <ha-card>
         <style>${css}</style>
         <div class="fb-header">
-          <button class="fb-icon-btn" data-act="prev" title="Vorige">‹</button>
-          <button class="fb-btn" data-act="today">Vandaag</button>
-          <button class="fb-icon-btn" data-act="next" title="Volgende">›</button>
+          ${this._config.show_navigation ? `
+            <div class="fb-nav">
+              <button class="fb-icon-btn" data-act="prev" title="Vorige">‹</button>
+              <button class="fb-btn" data-act="today">Vandaag</button>
+              <button class="fb-icon-btn" data-act="next" title="Volgende">›</button>
+            </div>
+          ` : ""}
           <div class="fb-title"></div>
         </div>
         <div class="fb-body"><div class="fb-empty">Laden…</div></div>
@@ -1446,7 +1443,6 @@ class FamilyBoardCalendarCard extends HTMLElement {
       dowHeader += `<div class="fb-mc-dow">${this._escape(label)}</div>`;
     }
 
-    const MAX_SLOTS = 3; // visible event rows per week
     let weeksHtml = "";
     for (let w = 0; w < 6; w++) {
       const weekStart = days[w * 7];
@@ -1529,24 +1525,13 @@ class FamilyBoardCalendarCard extends HTMLElement {
         </div>`;
       }
 
-      // Render bars (slot < MAX_SLOTS) and count overflow per dow
-      const overflowByDow = new Array(7).fill(0);
+      // Render every placed segment; week row grows via grid-auto-rows
       let bars = "";
       for (const p of placed) {
-        if (p.slot >= MAX_SLOTS) {
-          for (let d = p.startDow; d < p.startDow + p.span; d++) overflowByDow[d]++;
-          continue;
-        }
         bars += this._renderMonthBar(p, weekStart);
       }
-      let mores = "";
-      for (let dow = 0; dow < 7; dow++) {
-        if (overflowByDow[dow] > 0) {
-          mores += `<span class="fb-mc-more" style="grid-column:${dow + 1};">+${overflowByDow[dow]} meer</span>`;
-        }
-      }
 
-      weeksHtml += `<div class="fb-month-week">${bgs}${heads}${bars}${mores}</div>`;
+      weeksHtml += `<div class="fb-month-week">${bgs}${heads}${bars}</div>`;
     }
 
     const error = this._error ? `<div class="fb-error">⚠ ${this._error}</div>` : "";
