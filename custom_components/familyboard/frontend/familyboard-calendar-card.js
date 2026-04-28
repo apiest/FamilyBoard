@@ -38,14 +38,33 @@
  */
 
 const DEFAULT_COLORS = ["#4A90D9", "#27AE60", "#F39C12", "#9B59B6", "#E74C3C", "#1ABC9C"];
-const VIEW_NL = { day: "Vandaag", week: "Week", "2weeks": "2 Weken", month: "Maand" };
+const VIEW_NL = {
+  day: "Vandaag",
+  "2days": "Vandaag + Morgen",
+  week: "Week",
+  workweek: "Werkweek",
+  "2weeks": "2 Weken",
+  month: "Maand",
+};
 // Map stable select-state keys to internal view modes.
 const VIEW_FROM_SELECT = {
   today: "day",
   tomorrow: "day",
+  today_tomorrow: "2days",
   week: "week",
+  work_week: "workweek",
   two_weeks: "2weeks",
   month: "month",
+};
+// firstWeekday string -> day index (0 = Sunday)
+const FIRST_WEEKDAY_MAP = {
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+  sunday: 0,
 };
 
 class FamilyBoardCalendarCard extends HTMLElement {
@@ -149,18 +168,34 @@ class FamilyBoardCalendarCard extends HTMLElement {
 
   _anchorCurrentStartFor(viewSelectState) {
     const today = this._startOfDay(new Date());
-    if (viewSelectState === "today") {
+    if (viewSelectState === "today" || viewSelectState === "today_tomorrow") {
       this._currentStart = today;
     } else if (viewSelectState === "tomorrow") {
       this._currentStart = this._addDays(today, 1);
     } else if (viewSelectState === "week" || viewSelectState === "two_weeks") {
-      // snap to monday of current week
+      // snap to first weekday of current week (HA locale)
+      const fw = this._firstWeekday();
+      const dow = (today.getDay() - fw + 7) % 7;
+      this._currentStart = this._addDays(today, -dow);
+    } else if (viewSelectState === "work_week") {
+      // always snap to Monday of current week
       const dow = (today.getDay() + 6) % 7; // Mon=0
       this._currentStart = this._addDays(today, -dow);
     } else if (viewSelectState === "month") {
       this._currentStart = new Date(today.getFullYear(), today.getMonth(), 1);
     }
     this._fetchKey = null;
+  }
+
+  // First day of week index (0=Sun..6=Sat) from HA user locale; fallback Monday.
+  _firstWeekday() {
+    const fw = this._hass?.locale?.firstWeekday;
+    if (typeof fw === "number" && fw >= 0 && fw <= 6) return fw;
+    if (typeof fw === "string") {
+      const v = FIRST_WEEKDAY_MAP[fw.toLowerCase()];
+      if (v !== undefined) return v;
+    }
+    return 1; // Monday default
   }
 
   getCardSize() {
@@ -377,12 +412,15 @@ class FamilyBoardCalendarCard extends HTMLElement {
     const start = new Date(this._currentStart);
     let end;
     if (view === "day") end = this._addDays(start, 1);
+    else if (view === "2days") end = this._addDays(start, 2);
+    else if (view === "workweek") end = this._addDays(start, 5);
     else if (view === "week") end = this._addDays(start, 7);
     else if (view === "2weeks") end = this._addDays(start, 14);
     else if (view === "month") {
-      // month grid: align to monday before 1st of month, 6 weeks
+      // month grid: align to first weekday before 1st of month, 6 weeks
       const first = new Date(start.getFullYear(), start.getMonth(), 1);
-      const dow = (first.getDay() + 6) % 7; // Mon=0
+      const fw = this._firstWeekday();
+      const dow = (first.getDay() - fw + 7) % 7;
       const gridStart = this._addDays(first, -dow);
       return [gridStart, this._addDays(gridStart, 42)];
     } else {
@@ -615,12 +653,18 @@ class FamilyBoardCalendarCard extends HTMLElement {
 
   _navPrev() {
     const view = this._activeView();
-    const step = view === "day" ? 1 : view === "week" ? 7 : view === "2weeks" ? 14 : 30;
     if (view === "month") {
       const d = new Date(this._currentStart);
       d.setMonth(d.getMonth() - 1);
       this._currentStart = this._startOfDay(d);
     } else {
+      const step =
+        view === "day" ? 1
+        : view === "2days" ? 2
+        : view === "workweek" ? 7
+        : view === "week" ? 7
+        : view === "2weeks" ? 14
+        : 1;
       this._currentStart = this._addDays(this._currentStart, -step);
     }
     this._fetchKey = null;
@@ -630,12 +674,18 @@ class FamilyBoardCalendarCard extends HTMLElement {
 
   _navNext() {
     const view = this._activeView();
-    const step = view === "day" ? 1 : view === "week" ? 7 : view === "2weeks" ? 14 : 30;
     if (view === "month") {
       const d = new Date(this._currentStart);
       d.setMonth(d.getMonth() + 1);
       this._currentStart = this._startOfDay(d);
     } else {
+      const step =
+        view === "day" ? 1
+        : view === "2days" ? 2
+        : view === "workweek" ? 7
+        : view === "week" ? 7
+        : view === "2weeks" ? 14
+        : 1;
       this._currentStart = this._addDays(this._currentStart, step);
     }
     this._fetchKey = null;
@@ -693,12 +743,16 @@ class FamilyBoardCalendarCard extends HTMLElement {
       body.innerHTML = this._renderList(view);
     } else if (view === "day") {
       body.innerHTML = this._renderTimeGrid(1);
+    } else if (view === "2days") {
+      body.innerHTML = this._renderTimeGrid(2);
+    } else if (view === "workweek") {
+      body.innerHTML = this._renderTimeGrid(5);
     } else if (view === "week") {
       body.innerHTML = this._renderTimeGrid(7);
     } else if (view === "2weeks") {
       body.innerHTML = this._renderTimeGrid(14);
     } else if (view === "month") {
-      body.innerHTML = this._renderMonthPlaceholder();
+      body.innerHTML = this._renderMonthGrid();
     }
     this._wireEventClicks();
     this._scrollToHour();
@@ -759,6 +813,8 @@ class FamilyBoardCalendarCard extends HTMLElement {
         position: relative;
         container-type: inline-size;
       }
+      .fb-grid.cols-2 { grid-template-columns: 56px repeat(2, 1fr); }
+      .fb-grid.cols-5 { grid-template-columns: 56px repeat(5, 1fr); }
       .fb-grid.cols-7 { grid-template-columns: 56px repeat(7, 1fr); }
       .fb-grid.cols-14 { grid-template-columns: 56px repeat(14, minmax(60px, 1fr)); overflow-x: auto; }
 
@@ -961,6 +1017,88 @@ class FamilyBoardCalendarCard extends HTMLElement {
         color: var(--fb-muted);
       }
 
+      .fb-month-dow {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        position: sticky; top: 0; z-index: 3;
+        background: var(--card-background-color, var(--ha-card-background, #1c1c1c));
+        border-bottom: 1px solid var(--fb-border);
+      }
+      .fb-mc-dow {
+        text-align: center;
+        font-size: 0.78em;
+        color: var(--fb-muted);
+        padding: 6px 4px;
+      }
+      .fb-month-grid {
+        display: flex;
+        flex-direction: column;
+      }
+      .fb-month-week {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        grid-template-rows: 24px;
+        grid-auto-rows: 18px;
+        padding-bottom: 4px;
+        position: relative;
+        border-bottom: 1px solid var(--fb-border);
+      }
+      .fb-month-week:last-child { border-bottom: none; }
+      .fb-mc-bg {
+        grid-row: 1 / -1;
+        border-right: 1px solid var(--fb-border);
+        z-index: 0;
+      }
+      .fb-mc-bg:nth-child(7n) { border-right: none; }
+      .fb-mc-bg.fb-mc-other { background: var(--fb-bg-alt); }
+      .fb-mc-bg.fb-mc-weekend:not(.fb-mc-other) { background: rgba(255,255,255,0.02); }
+      .fb-mc-bg.fb-mc-today {
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+      }
+      .fb-mc-head {
+        grid-row: 1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 2px 4px;
+        font-size: 0.82em;
+        line-height: 1.2;
+        z-index: 1;
+        pointer-events: none;
+      }
+      .fb-mc-head.fb-mc-today .fb-mc-num {
+        background: var(--primary-color);
+        color: var(--text-primary-color, #fff);
+        border-radius: 999px;
+        padding: 0 6px;
+        font-weight: 600;
+      }
+      .fb-mc-num {
+        display: inline-block;
+        min-width: 18px;
+        text-align: center;
+      }
+      .fb-mc-head .fb-day-wx {
+        font-size: 0.85em;
+        opacity: 0.85;
+      }
+      .fb-mc-bar {
+        margin: 0 2px;
+        padding: 0 5px;
+        font-size: 0.7em;
+        line-height: 16px;
+        height: 16px;
+        border-radius: 3px;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        cursor: pointer;
+        z-index: 1;
+      }
+      .fb-mc-bar.fb-mc-cont-prev { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
+      .fb-mc-bar.fb-mc-cont-next { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
+
       /* List layout */
       .fb-list { display: flex; flex-direction: column; }
       .fb-list-day {
@@ -1061,9 +1199,13 @@ class FamilyBoardCalendarCard extends HTMLElement {
       <ha-card>
         <style>${css}</style>
         <div class="fb-header">
-          <button class="fb-icon-btn" data-act="prev" title="Vorige">‹</button>
-          <button class="fb-btn" data-act="today">Vandaag</button>
-          <button class="fb-icon-btn" data-act="next" title="Volgende">›</button>
+          ${this._config.show_navigation ? `
+            <div class="fb-nav">
+              <button class="fb-icon-btn" data-act="prev" title="Vorige">‹</button>
+              <button class="fb-btn" data-act="today">Vandaag</button>
+              <button class="fb-icon-btn" data-act="next" title="Volgende">›</button>
+            </div>
+          ` : ""}
           <div class="fb-title"></div>
         </div>
         <div class="fb-body"><div class="fb-empty">Laden…</div></div>
@@ -1083,8 +1225,12 @@ class FamilyBoardCalendarCard extends HTMLElement {
     if (view === "day") {
       return this._formatDate(start, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
     }
-    if (view === "week" || view === "2weeks") {
-      const len = view === "week" ? 6 : 13;
+    if (view === "2days" || view === "workweek" || view === "week" || view === "2weeks") {
+      const len =
+        view === "2days" ? 1
+        : view === "workweek" ? 4
+        : view === "week" ? 6
+        : 13;
       const end = this._addDays(start, len);
       const sm = start.toLocaleDateString(this._config.locale, { day: "numeric", month: "short" });
       const em = end.toLocaleDateString(this._config.locale, { day: "numeric", month: "short", year: "numeric" });
@@ -1152,7 +1298,12 @@ class FamilyBoardCalendarCard extends HTMLElement {
     const totalHours = endHour - startHour;
     const gridHeight = totalHours * hourHeight;
 
-    const colsClass = numDays === 7 ? " cols-7" : numDays === 14 ? " cols-14" : "";
+    const colsClass =
+      numDays === 2 ? " cols-2"
+      : numDays === 5 ? " cols-5"
+      : numDays === 7 ? " cols-7"
+      : numDays === 14 ? " cols-14"
+      : "";
 
     // Header row + all-day row
     let dayHeaders = `<div class="fb-day-header" style="border-right:1px solid var(--fb-border);"></div>`;
@@ -1271,8 +1422,152 @@ class FamilyBoardCalendarCard extends HTMLElement {
     return out;
   }
 
-  _renderMonthPlaceholder() {
-    return `<div class="fb-month-placeholder">Maand-weergave komt in Phase 3.</div>`;
+  _renderMonthGrid() {
+    const cfg = this._config;
+    const today = this._startOfDay(new Date());
+    const monthIdx = this._currentStart.getMonth();
+    const [gridStart] = this._visibleRange();
+
+    const days = [];
+    for (let i = 0; i < 42; i++) days.push(this._addDays(gridStart, i));
+
+    // Combine calendar events with reminder pseudo-events
+    const reminderEvents = this._buildReminderEvents();
+    const allEvents = [...this._events, ...reminderEvents];
+
+    // Weekday header row, starting at firstWeekday
+    let dowHeader = "";
+    for (let i = 0; i < 7; i++) {
+      const sample = this._addDays(gridStart, i);
+      const label = sample.toLocaleDateString(cfg.locale, { weekday: "short" });
+      dowHeader += `<div class="fb-mc-dow">${this._escape(label)}</div>`;
+    }
+
+    let weeksHtml = "";
+    for (let w = 0; w < 6; w++) {
+      const weekStart = days[w * 7];
+      const weekEnd = this._addDays(weekStart, 7); // exclusive
+
+      // Build segments: one per (event × week) overlap, with span 1..7
+      const segments = [];
+      for (const ev of allEvents) {
+        if (!(ev.endDate > weekStart && ev.startDate < weekEnd)) continue;
+        const segStart = ev.startDate < weekStart ? weekStart : this._startOfDay(ev.startDate);
+        // For all-day events endDate is exclusive midnight.
+        // For timed events ending mid-day, the segment ends on that day.
+        const lastDayCandidate = new Date(ev.endDate.getTime() - 1);
+        const segLast = lastDayCandidate >= weekEnd
+          ? this._addDays(weekEnd, -1)
+          : this._startOfDay(lastDayCandidate);
+        const startDow = Math.round((segStart - weekStart) / 86400000);
+        const span = Math.round((segLast - segStart) / 86400000) + 1;
+        if (span < 1) continue;
+        const isContinuationFromPrev = ev.startDate < weekStart;
+        const isContinuationToNext = ev.endDate > weekEnd;
+        segments.push({
+          ev,
+          startDow: Math.max(0, startDow),
+          span: Math.min(7 - Math.max(0, startDow), span),
+          isContPrev: isContinuationFromPrev,
+          isContNext: isContinuationToNext,
+        });
+      }
+
+      // Sort: longer spans first, then earlier start, all-day before timed
+      segments.sort((a, b) => {
+        const ad = a.ev.allDay || this._spansFullDay(a.ev, weekStart) ? 0 : 1;
+        const bd = b.ev.allDay || this._spansFullDay(b.ev, weekStart) ? 0 : 1;
+        if (ad !== bd) return ad - bd;
+        if (b.span !== a.span) return b.span - a.span;
+        return a.ev.startDate - b.ev.startDate;
+      });
+
+      // Greedy slot assignment: lowest free slot for the segment's columns
+      const used = new Set(); // "dow|slot"
+      const placed = [];
+      for (const seg of segments) {
+        let s = 0;
+        // safety cap to avoid runaway
+        while (s < 32) {
+          let ok = true;
+          for (let d = seg.startDow; d < seg.startDow + seg.span; d++) {
+            if (used.has(`${d}|${s}`)) { ok = false; break; }
+          }
+          if (ok) break;
+          s++;
+        }
+        for (let d = seg.startDow; d < seg.startDow + seg.span; d++) {
+          used.add(`${d}|${s}`);
+        }
+        placed.push({ ...seg, slot: s });
+      }
+
+      // Background day cells (row 1 / -1, full week-row height)
+      let bgs = "";
+      let heads = "";
+      for (let dow = 0; dow < 7; dow++) {
+        const d = days[w * 7 + dow];
+        const isToday = this._isSameDay(d, today);
+        const isOther = d.getMonth() !== monthIdx;
+        const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+        const bgClasses = [
+          "fb-mc-bg",
+          isToday ? "fb-mc-today" : "",
+          isOther ? "fb-mc-other" : "",
+          isWeekend ? "fb-mc-weekend" : "",
+        ].filter(Boolean).join(" ");
+        bgs += `<div class="${bgClasses}" style="grid-column:${dow + 1};"></div>`;
+        const wx = this._renderWeather(d);
+        const headClasses = ["fb-mc-head", isToday ? "fb-mc-today" : ""].filter(Boolean).join(" ");
+        heads += `<div class="${headClasses}" style="grid-column:${dow + 1};">
+          <span class="fb-mc-num">${d.getDate()}</span>
+          ${wx}
+        </div>`;
+      }
+
+      // Render every placed segment; week row grows via grid-auto-rows
+      let bars = "";
+      for (const p of placed) {
+        bars += this._renderMonthBar(p, weekStart);
+      }
+
+      weeksHtml += `<div class="fb-month-week">${bgs}${heads}${bars}</div>`;
+    }
+
+    const error = this._error ? `<div class="fb-error">⚠ ${this._error}</div>` : "";
+    const loading = this._loading ? `<div class="fb-loading">…</div>` : "";
+
+    return `
+      ${error}
+      ${loading}
+      <div class="fb-month-dow">${dowHeader}</div>
+      <div class="fb-month-grid">${weeksHtml}</div>
+    `;
+  }
+
+  _renderMonthBar(seg, weekStart) {
+    const ev = seg.ev;
+    const bg = this._eventBackground(ev);
+    const reminderCls = ev.isReminder ? " fb-reminder" : "";
+    const dataAttr = ev.isReminder
+      ? `data-todo="${this._escape(ev.todoEntity || "")}" data-uid="${this._escape(ev.uid || "")}"`
+      : `data-sources="${encodeURIComponent(JSON.stringify(ev.sources))}"`;
+    const segDay = this._addDays(weekStart, seg.startDow);
+    const isAllDay = ev.allDay || this._spansFullDay(ev, segDay);
+    const prefix = ev.isReminder
+      ? "🔔 "
+      : isAllDay || seg.span > 1 || seg.isContPrev
+        ? ""
+        : `${this._formatTime(ev.startDate)} `;
+    const contClasses = [
+      seg.isContPrev ? "fb-mc-cont-prev" : "",
+      seg.isContNext ? "fb-mc-cont-next" : "",
+    ].filter(Boolean).join(" ");
+    const arrowL = seg.isContPrev ? "‹ " : "";
+    const arrowR = seg.isContNext ? " ›" : "";
+    return `<span class="fb-mc-bar${reminderCls} ${contClasses}" ${dataAttr}
+      style="grid-column:${seg.startDow + 1} / span ${seg.span}; grid-row:${seg.slot + 2}; background:${bg};"
+      title="${this._escape(ev.summary || "")}">${arrowL}${prefix}${this._escape(ev.summary || "(geen titel)")}${arrowR}</span>`;
   }
 
   // ---------- list layout ----------

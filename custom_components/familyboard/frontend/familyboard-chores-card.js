@@ -131,9 +131,17 @@ class FamilyBoardChoresCard extends HTMLElement {
     } else if (view === "tomorrow") {
       endDate = new Date(today);
       endDate.setDate(endDate.getDate() + 1);
+    } else if (view === "today_tomorrow") {
+      endDate = new Date(today);
+      endDate.setDate(endDate.getDate() + 1);
     } else if (view === "week") {
       endDate = new Date(today);
       endDate.setDate(endDate.getDate() + 7);
+    } else if (view === "work_week") {
+      // Mon..Fri of current week
+      endDate = new Date(today);
+      const dow = (today.getDay() + 6) % 7; // Mon=0
+      endDate.setDate(today.getDate() - dow + 4);
     } else if (view === "two_weeks") {
       endDate = new Date(today);
       endDate.setDate(endDate.getDate() + 14);

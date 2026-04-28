@@ -17,6 +17,13 @@
  *   color: amber                                 # optional, selected color
  *   show_reminders: true                         # optional, append a Herinneringen toggle chip
  *   reminders_switch: switch.familyboard_show_reminders  # optional, entity backing the chip
+ *   hidden_options:                              # optional, hide chips for these option keys
+ *     - tomorrow
+ *     - work_week
+ *   visible_options:                             # optional, whitelist (wins over hidden_options)
+ *     - today
+ *     - week
+ *     - month
  *   extra_chips: []                              # optional, raw mushroom-chip dicts appended
  */
 
@@ -46,7 +53,9 @@ function normalizeAlignment(v) {
 const DEFAULT_ICONS = {
   today: "mdi:calendar-today",
   tomorrow: "mdi:calendar-arrow-right",
+  today_tomorrow: "mdi:calendar-multiple",
   week: "mdi:calendar-week",
+  work_week: "mdi:briefcase-clock",
   two_weeks: "mdi:calendar-range",
   month: "mdi:calendar-month",
   list: "mdi:view-list",
@@ -95,10 +104,14 @@ class FamilyBoardViewCard extends HTMLElement {
       reminders_switch: config.reminders_switch || DEFAULT_REMINDERS_SWITCH,
       reminders_label: config.reminders_label || "Herinneringen",
       extra_chips: Array.isArray(config.extra_chips) ? config.extra_chips : [],
+      hidden_options: Array.isArray(config.hidden_options) ? config.hidden_options : [],
+      visible_options: Array.isArray(config.visible_options) ? config.visible_options : null,
       alignment: normalizeAlignment(config.alignment),
       ...config,
     };
-    // Re-normalize after spread so `...config` can't reintroduce a raw alias.
+    // Make sure caller's config doesn't accidentally override the normalized values.
+    this._config.hidden_options = Array.isArray(config.hidden_options) ? config.hidden_options : [];
+    this._config.visible_options = Array.isArray(config.visible_options) ? config.visible_options : null;
     this._config.alignment = normalizeAlignment(config.alignment);
   }
 
@@ -132,8 +145,15 @@ class FamilyBoardViewCard extends HTMLElement {
   }
 
   _buildChips(stateObj) {
-    const options = stateObj?.attributes?.options || [];
+    const allOptions = stateObj?.attributes?.options || [];
     const current = stateObj?.state;
+    let options;
+    if (this._config.visible_options && this._config.visible_options.length) {
+      // Whitelist + preserve user-specified order; only keep entries the entity actually has.
+      options = this._config.visible_options.filter((o) => allOptions.includes(o));
+    } else {
+      options = allOptions.filter((o) => !this._config.hidden_options.includes(o));
+    }
     const chips = options.map((opt) => ({
       type: "template",
       icon: this._config.icons[opt] || "mdi:circle-outline",
@@ -198,6 +218,8 @@ class FamilyBoardViewCard extends HTMLElement {
       s: stateObj.state,
       lang: this._hass?.locale?.language || "",
       x: this._config.extra_chips.length,
+      h: this._config.hidden_options,
+      v: this._config.visible_options,
       a: this._config.alignment || "",
       r: this._config.show_reminders
         ? this._hass.states[this._config.reminders_switch]?.state || ""
@@ -234,7 +256,7 @@ class FamilyBoardViewCard extends HTMLElement {
   }
 }
 
-const VIEW_EDITOR_SCHEMA = [
+const VIEW_EDITOR_BASE_SCHEMA = [
   { name: "entity", required: true, selector: { entity: { domain: "select" } } },
   { name: "color", selector: { text: {} } },
   { name: "show_reminders", selector: { boolean: {} } },
@@ -254,6 +276,30 @@ const VIEW_EDITOR_SCHEMA = [
     },
   },
 ];
+
+function buildViewEditorSchema(hass, config) {
+  const optionItems = [];
+  const entityId = config?.entity;
+  const stateObj = entityId && hass ? hass.states[entityId] : null;
+  const options = stateObj?.attributes?.options;
+  if (Array.isArray(options) && options.length) {
+    for (const opt of options) {
+      optionItems.push({ value: opt, label: opt });
+    }
+  }
+  const optionsSelector = optionItems.length
+    ? { select: { mode: "list", multiple: true, options: optionItems } }
+    : { object: {} };
+  // Only one of hidden_options / visible_options is shown to keep the editor
+  // unambiguous (visible_options wins at runtime). visible_options is only
+  // exposed when the user has it already set in YAML.
+  const hasVisible =
+    Array.isArray(config?.visible_options) && config.visible_options.length > 0;
+  const optionsField = hasVisible
+    ? { name: "visible_options", selector: optionsSelector }
+    : { name: "hidden_options", selector: optionsSelector };
+  return [...VIEW_EDITOR_BASE_SCHEMA, optionsField];
+}
 
 class FamilyBoardViewCardEditor extends HTMLElement {
   constructor() {
@@ -278,7 +324,6 @@ class FamilyBoardViewCardEditor extends HTMLElement {
     if (!this._form) {
       this._form = document.createElement("ha-form");
       this._form.computeLabel = (s) => s.label || s.name;
-      this._form.schema = VIEW_EDITOR_SCHEMA;
       this._form.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
         this.dispatchEvent(
@@ -292,6 +337,7 @@ class FamilyBoardViewCardEditor extends HTMLElement {
       this.shadowRoot.appendChild(this._form);
     }
     if (this._hass) this._form.hass = this._hass;
+    this._form.schema = buildViewEditorSchema(this._hass, this._config);
     this._form.data = this._config;
   }
 }

@@ -664,8 +664,15 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
             return (today.isoformat(), today.isoformat())
         if view == "tomorrow":
             return (today.isoformat(), (today + timedelta(days=1)).isoformat())
+        if view == "today_tomorrow":
+            return (today.isoformat(), (today + timedelta(days=1)).isoformat())
         if view == "week":
             return (today.isoformat(), (today + timedelta(days=7)).isoformat())
+        if view == "work_week":
+            # Mon..Fri of the current week (Mon = 0)
+            monday = today - timedelta(days=today.weekday())
+            friday = monday + timedelta(days=4)
+            return (monday.isoformat(), friday.isoformat())
         if view == "two_weeks":
             return (today.isoformat(), (today + timedelta(days=14)).isoformat())
         if view == "month":
