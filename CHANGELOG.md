@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-28
+
 ### Added
 - Native month view in `familyboard-calendar-card` (replaces the Phase 3
   placeholder): 6×7 grid with multi-member gradient pills, weather badge and
@@ -25,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Werkweek blijft altijd ma–vr.
 - `familyboard-view-card` accepts `hidden_options:` and `visible_options:`
   to hide/whitelist chips per dashboard without touching the select entity.
+  Both are now exposed in the visual editor (only one shown at a time;
+  `visible_options` takes precedence at runtime).
 - `familyboard-calendar-card`: new **list** layout that groups events by day
   (large date number, weekday short name, weather chip, color-bar per event,
   reminders inline). Selected via the new `layout_entity` config option,
@@ -40,6 +44,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on narrow widths (portrait week / 2-weeks view). Header is now a flex row
   with container-query breakpoints that drop weather temperatures (then the
   whole weather chip) when columns become too narrow.
+
+### Changed
+- Dev/test dependencies bumped to match HA 2026.4: `homeassistant` 2026.4.4,
+  `pytest` ≥9.0.3, `pytest-asyncio` ≥1.3.0, `pytest-cov` ≥7.1.0,
+  `pytest-homeassistant-custom-component` ≥0.13.324.
+- CI: `actions/checkout@v6` everywhere; tests workflow now runs on
+  Python 3.14 (required by the new `pytest-homeassistant-custom-component`).
 
 ## [0.1.0] - 2026-04-23
 
