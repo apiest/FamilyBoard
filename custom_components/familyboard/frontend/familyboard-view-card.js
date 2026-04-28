@@ -256,7 +256,7 @@ class FamilyBoardViewCard extends HTMLElement {
   }
 }
 
-const VIEW_EDITOR_SCHEMA = [
+const VIEW_EDITOR_BASE_SCHEMA = [
   { name: "entity", required: true, selector: { entity: { domain: "select" } } },
   { name: "color", selector: { text: {} } },
   { name: "show_reminders", selector: { boolean: {} } },
@@ -276,6 +276,30 @@ const VIEW_EDITOR_SCHEMA = [
     },
   },
 ];
+
+function buildViewEditorSchema(hass, config) {
+  const optionItems = [];
+  const entityId = config?.entity;
+  const stateObj = entityId && hass ? hass.states[entityId] : null;
+  const options = stateObj?.attributes?.options;
+  if (Array.isArray(options) && options.length) {
+    for (const opt of options) {
+      optionItems.push({ value: opt, label: opt });
+    }
+  }
+  const optionsSelector = optionItems.length
+    ? { select: { mode: "list", multiple: true, options: optionItems } }
+    : { object: {} };
+  // Only one of hidden_options / visible_options is shown to keep the editor
+  // unambiguous (visible_options wins at runtime). visible_options is only
+  // exposed when the user has it already set in YAML.
+  const hasVisible =
+    Array.isArray(config?.visible_options) && config.visible_options.length > 0;
+  const optionsField = hasVisible
+    ? { name: "visible_options", selector: optionsSelector }
+    : { name: "hidden_options", selector: optionsSelector };
+  return [...VIEW_EDITOR_BASE_SCHEMA, optionsField];
+}
 
 class FamilyBoardViewCardEditor extends HTMLElement {
   constructor() {
@@ -300,7 +324,6 @@ class FamilyBoardViewCardEditor extends HTMLElement {
     if (!this._form) {
       this._form = document.createElement("ha-form");
       this._form.computeLabel = (s) => s.label || s.name;
-      this._form.schema = VIEW_EDITOR_SCHEMA;
       this._form.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
         this.dispatchEvent(
@@ -314,6 +337,7 @@ class FamilyBoardViewCardEditor extends HTMLElement {
       this.shadowRoot.appendChild(this._form);
     }
     if (this._hass) this._form.hass = this._hass;
+    this._form.schema = buildViewEditorSchema(this._hass, this._config);
     this._form.data = this._config;
   }
 }
