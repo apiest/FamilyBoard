@@ -201,7 +201,9 @@ function _lijstCard(cfg, members) {
             const v = states['${cfg.view_entity}'].state;
             if (v === 'today') return 1;
             if (v === 'tomorrow') return 2;
+            if (v === 'today_tomorrow') return 2;
             if (v === 'week') return 7;
+            if (v === 'work_week') return 5;
             if (v === 'two_weeks') return 14;
             return 'month';
           })()`,
@@ -209,7 +211,9 @@ function _lijstCard(cfg, members) {
             const v = states['${cfg.view_entity}'].state;
             if (v === 'today') return 'today';
             if (v === 'tomorrow') return 'tomorrow';
+            if (v === 'today_tomorrow') return 'today';
             if (v === 'week') return 'monday';
+            if (v === 'work_week') return 'monday';
             if (v === 'month') return 'monday';
             return 'today';
           })()`,

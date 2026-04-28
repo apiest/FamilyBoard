@@ -140,7 +140,9 @@
         "state": {
           "today": "Vandaag",
           "tomorrow": "Morgen",
+          "today_tomorrow": "Vandaag + Morgen",
           "week": "Week",
+          "work_week": "Werkweek",
           "two_weeks": "2 Weken",
           "month": "Maand"
         }

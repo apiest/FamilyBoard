@@ -27,7 +27,15 @@ def test_view_and_layout_options_are_lists() -> None:
     assert isinstance(VIEW_OPTIONS, list) and VIEW_OPTIONS
     assert isinstance(LAYOUT_OPTIONS, list) and LAYOUT_OPTIONS
     # Stable, language-neutral keys; user-visible labels live in translations.
-    assert VIEW_OPTIONS == ["today", "tomorrow", "week", "two_weeks", "month"]
+    assert VIEW_OPTIONS == [
+        "today",
+        "tomorrow",
+        "today_tomorrow",
+        "week",
+        "work_week",
+        "two_weeks",
+        "month",
+    ]
     assert LAYOUT_OPTIONS == ["list", "agenda"]
 
 

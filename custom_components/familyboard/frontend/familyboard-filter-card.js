@@ -20,6 +20,26 @@ const DEFAULT_MEMBERS = "sensor.familyboard_members";
 const ALLES_LABEL = "Alles";
 const ALLES_COLOR = "#8c8c8c";
 
+// Accept friendly aliases for mushroom-chips-card `alignment` values.
+const ALIGNMENT_MAP = {
+  left: "start",
+  begin: "start",
+  start: "start",
+  middle: "center",
+  center: "center",
+  centre: "center",
+  right: "end",
+  end: "end",
+  uitlijnen: "justify",
+  justify: "justify",
+  spread: "justify",
+};
+
+function normalizeAlignment(v) {
+  if (!v) return null;
+  return ALIGNMENT_MAP[String(v).toLowerCase()] || null;
+}
+
 class FamilyBoardFilterCard extends HTMLElement {
   constructor() {
     super();
@@ -59,8 +79,11 @@ class FamilyBoardFilterCard extends HTMLElement {
       members_entity: config.members_entity || DEFAULT_MEMBERS,
       show_alles: config.show_alles !== false,
       extra_chips: Array.isArray(config.extra_chips) ? config.extra_chips : [],
+      alignment: normalizeAlignment(config.alignment),
       ...config,
     };
+    // Re-normalize after spread so `...config` can't reintroduce a raw alias.
+    this._config.alignment = normalizeAlignment(config.alignment);
   }
 
   set hass(hass) {
@@ -191,6 +214,7 @@ class FamilyBoardFilterCard extends HTMLElement {
       f: currentFilter,
       cfg: this._config.extra_chips.length,
       a: this._config.show_alles,
+      al: this._config.alignment || "",
     });
     if (sig === this._lastSig && this._inner) {
       this._inner.hass = this._hass;
@@ -200,6 +224,7 @@ class FamilyBoardFilterCard extends HTMLElement {
 
     const chips = this._buildChips(members, currentFilter);
     const cardConfig = { type: "custom:mushroom-chips-card", chips };
+    if (this._config.alignment) cardConfig.alignment = this._config.alignment;
 
     let helpers;
     try {
@@ -226,6 +251,20 @@ const FILTER_EDITOR_SCHEMA = [
   { name: "filter_entity", selector: { entity: { domain: "select" } } },
   { name: "members_entity", selector: { entity: { domain: "sensor" } } },
   { name: "show_alles", selector: { boolean: {} } },
+  {
+    name: "alignment",
+    selector: {
+      select: {
+        mode: "dropdown",
+        options: [
+          { value: "start", label: "Links" },
+          { value: "center", label: "Midden" },
+          { value: "end", label: "Rechts" },
+          { value: "justify", label: "Uitlijnen" },
+        ],
+      },
+    },
+  },
 ];
 
 class FamilyBoardFilterCardEditor extends HTMLElement {

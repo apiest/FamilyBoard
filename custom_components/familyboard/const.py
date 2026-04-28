@@ -59,7 +59,15 @@ SNOOZE_MAX_MIN = 240
 
 # View / filter options. Stable, language-neutral keys; user-visible labels
 # come from translations (entity.select.<key>.state.<key>).
-VIEW_OPTIONS = ["today", "tomorrow", "week", "two_weeks", "month"]
+VIEW_OPTIONS = [
+    "today",
+    "tomorrow",
+    "today_tomorrow",
+    "week",
+    "work_week",
+    "two_weeks",
+    "month",
+]
 LAYOUT_OPTIONS = ["list", "agenda"]
 ALLES = "Alles"
 # Legacy Dutch state values from earlier releases — restored states are mapped
