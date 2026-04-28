@@ -103,6 +103,8 @@ class FamilyBoardCalendarCard extends HTMLElement {
       row_height: this._clampInt(config.row_height, 12, 80, 24),
       filter_entity: config.filter_entity || null,
       view_entity: config.view_entity || null,
+      layout_entity: config.layout_entity || null,
+      layout: config.layout === "list" ? "list" : "agenda",
       filter_map: config.filter_map || null,
       shared_calendars: sharedCalendars,
       member_entities: memberEntities,
@@ -230,6 +232,10 @@ class FamilyBoardCalendarCard extends HTMLElement {
       const s = hass.states[this._config.view_entity];
       parts.push(`v:${s ? s.state : "x"}`);
     }
+    if (this._config.layout_entity) {
+      const s = hass.states[this._config.layout_entity];
+      parts.push(`l:${s ? s.state : "x"}`);
+    }
     if (this._config.reminders_hide_when) {
       const s = hass.states[this._config.reminders_hide_when];
       parts.push(`rh:${s ? s.state : "x"}`);
@@ -297,6 +303,14 @@ class FamilyBoardCalendarCard extends HTMLElement {
       if (s && VIEW_FROM_SELECT[s.state]) return VIEW_FROM_SELECT[s.state];
     }
     return this._config.view;
+  }
+
+  _activeLayout() {
+    if (this._config.layout_entity && this._hass) {
+      const s = this._hass.states[this._config.layout_entity];
+      if (s && (s.state === "list" || s.state === "agenda")) return s.state;
+    }
+    return this._config.layout || "agenda";
   }
 
   _activeFilterValue() {
@@ -665,6 +679,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
       this._wireBaseEvents();
     }
     const view = this._activeView();
+    const layout = this._activeLayout();
     const body = this.shadowRoot.querySelector(".fb-body");
     const title = this.shadowRoot.querySelector(".fb-title");
     title.textContent = this._headerTitle(view);
@@ -674,7 +689,9 @@ class FamilyBoardCalendarCard extends HTMLElement {
       return;
     }
 
-    if (view === "day") {
+    if (layout === "list") {
+      body.innerHTML = this._renderList(view);
+    } else if (view === "day") {
       body.innerHTML = this._renderTimeGrid(1);
     } else if (view === "week") {
       body.innerHTML = this._renderTimeGrid(7);
@@ -740,6 +757,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
         display: grid;
         grid-template-columns: 56px 1fr;
         position: relative;
+        container-type: inline-size;
       }
       .fb-grid.cols-7 { grid-template-columns: 56px repeat(7, 1fr); }
       .fb-grid.cols-14 { grid-template-columns: 56px repeat(14, minmax(60px, 1fr)); overflow-x: auto; }
@@ -749,30 +767,54 @@ class FamilyBoardCalendarCard extends HTMLElement {
       }
       .fb-day-header {
         padding: 6px 8px;
-        text-align: center;
         border-bottom: 1px solid var(--fb-border);
         font-size: 0.85em;
         position: sticky; top: 0;
         background: var(--card-background-color, var(--ha-card-background, #1c1c1c));
         z-index: 3;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        min-width: 0;
       }
       .fb-day-header.today { color: var(--primary-color); font-weight: 600; }
       .fb-day-header .fb-dow { font-size: 0.75em; opacity: 0.7; }
       .fb-day-header .fb-dnum { font-size: 1.1em; }
-      .fb-day-header .fb-day-date { line-height: 1.15; }
+      .fb-day-header .fb-day-date {
+        line-height: 1.15;
+        text-align: left;
+        flex: 0 1 auto;
+        min-width: 0;
+      }
       .fb-day-wx {
-        position: absolute;
-        right: 8px;
-        top: 50%;
-        transform: translateY(-50%);
         display: inline-flex;
         align-items: center;
         gap: 4px;
         font-size: 0.85em;
         opacity: 0.95;
+        flex: 0 0 auto;
+        white-space: nowrap;
       }
       .fb-day-wx ha-icon { --mdc-icon-size: 20px; }
       .fb-day-wx .fb-wx-lo { opacity: 0.65; }
+      /* Narrow columns: drop temperatures, then drop weather entirely */
+      @container (max-width: 720px) {
+        .fb-grid.cols-7 .fb-day-wx .fb-wx-temps,
+        .fb-grid.cols-7 .fb-day-wx .fb-wx-hi,
+        .fb-grid.cols-7 .fb-day-wx .fb-wx-lo { display: none; }
+      }
+      @container (max-width: 1100px) {
+        .fb-grid.cols-14 .fb-day-wx .fb-wx-temps,
+        .fb-grid.cols-14 .fb-day-wx .fb-wx-hi,
+        .fb-grid.cols-14 .fb-day-wx .fb-wx-lo { display: none; }
+      }
+      @container (max-width: 480px) {
+        .fb-grid.cols-7 .fb-day-wx { display: none; }
+      }
+      @container (max-width: 780px) {
+        .fb-grid.cols-14 .fb-day-wx { display: none; }
+      }
 
       .fb-allday-row {
         display: contents;
@@ -917,6 +959,95 @@ class FamilyBoardCalendarCard extends HTMLElement {
         padding: 30px;
         text-align: center;
         color: var(--fb-muted);
+      }
+
+      /* List layout */
+      .fb-list { display: flex; flex-direction: column; }
+      .fb-list-day {
+        display: grid;
+        grid-template-columns: 64px 1fr;
+        gap: 8px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--fb-border);
+        align-items: start;
+      }
+      .fb-list-day.today { background-color: rgba(255, 200, 0, 0.04); }
+      .fb-list-day-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 2px;
+        padding-top: 2px;
+      }
+      .fb-list-day-header .fb-list-day-num {
+        font-size: 1.8em;
+        font-weight: 300;
+        line-height: 1;
+      }
+      .fb-list-day-header .fb-list-day-name {
+        font-size: 0.75em;
+        opacity: 0.7;
+        text-transform: lowercase;
+      }
+      .fb-list-day.today .fb-list-day-num,
+      .fb-list-day.today .fb-list-day-name { color: var(--primary-color); font-weight: 500; }
+      .fb-list-day-header .fb-day-wx {
+        font-size: 0.75em;
+        opacity: 0.85;
+        margin-top: 2px;
+        flex-direction: column;
+        gap: 0;
+      }
+      .fb-list-day-header .fb-day-wx ha-icon { --mdc-icon-size: 18px; }
+      .fb-list-events {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
+      .fb-list-event {
+        display: flex;
+        align-items: stretch;
+        background: var(--fb-bg-alt);
+        border-radius: 4px;
+        overflow: hidden;
+        cursor: pointer;
+        min-height: 36px;
+      }
+      .fb-list-event:hover { filter: brightness(1.1); }
+      .fb-list-event-bar {
+        flex: 0 0 5px;
+        align-self: stretch;
+      }
+      .fb-list-event-body {
+        flex: 1;
+        min-width: 0;
+        padding: 4px 8px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 2px;
+      }
+      .fb-list-event-time {
+        font-size: 0.72em;
+        opacity: 0.75;
+        line-height: 1.1;
+      }
+      .fb-list-event-title {
+        font-size: 0.95em;
+        font-weight: 500;
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .fb-list-event.fb-reminder .fb-list-event-title { font-weight: 400; }
+      .fb-list-empty {
+        font-size: 0.85em;
+        color: var(--fb-muted);
+        font-style: italic;
+        padding: 4px 0;
       }
 
       .fb-empty {
@@ -1142,6 +1273,103 @@ class FamilyBoardCalendarCard extends HTMLElement {
 
   _renderMonthPlaceholder() {
     return `<div class="fb-month-placeholder">Maand-weergave komt in Phase 3.</div>`;
+  }
+
+  // ---------- list layout ----------
+
+  _renderList(view) {
+    const [start, end] = this._visibleRange();
+    const today = this._startOfDay(new Date());
+    const days = [];
+    for (let d = new Date(start); d < end; d = this._addDays(d, 1)) {
+      days.push(new Date(d));
+    }
+
+    // For month view, only render days that have events (avoids 30+ empty rows).
+    const skipEmpty = view === "month" || days.length > 14;
+
+    const reminders = this._buildReminderEvents();
+    const allEvents = [...this._events, ...reminders];
+
+    let html = `<div class="fb-list">`;
+    let rendered = 0;
+    for (const d of days) {
+      const dayAll = [];
+      const dayTimed = [];
+      for (const ev of allEvents) {
+        if (!this._eventOnDay(ev, d)) continue;
+        if (ev.allDay || this._spansFullDay(ev, d)) dayAll.push(ev);
+        else dayTimed.push(ev);
+      }
+      if (!dayAll.length && !dayTimed.length && skipEmpty) continue;
+      dayAll.sort((a, b) => (a.summary || "").localeCompare(b.summary || ""));
+      dayTimed.sort((a, b) => a.startDate - b.startDate);
+      html += this._renderListDay(d, dayAll, dayTimed, today);
+      rendered++;
+    }
+    if (!rendered) {
+      html += `<div class="fb-empty">Geen afspraken in deze periode.</div>`;
+    }
+    html += `</div>`;
+
+    const loading = this._loading ? `<div class="fb-loading">…</div>` : "";
+    const error = this._error ? `<div class="fb-error">⚠ ${this._error}</div>` : "";
+    return `${error}${loading}${html}`;
+  }
+
+  _renderListDay(date, allDay, timed, today) {
+    const cfg = this._config;
+    const isToday = this._isSameDay(date, today);
+    const dow = date.toLocaleDateString(cfg.locale, { weekday: "short" });
+    const wx = this._renderWeather(date);
+    const events = [...allDay, ...timed];
+    let eventsHtml;
+    if (events.length) {
+      eventsHtml = events.map((ev) => this._renderListEvent(ev, date)).join("");
+    } else {
+      eventsHtml = `<div class="fb-list-empty">Geen afspraken</div>`;
+    }
+    return `
+      <div class="fb-list-day${isToday ? " today" : ""}">
+        <div class="fb-list-day-header">
+          <div class="fb-list-day-num">${date.getDate()}</div>
+          <div class="fb-list-day-name">${dow}</div>
+          ${wx}
+        </div>
+        <div class="fb-list-events">${eventsHtml}</div>
+      </div>
+    `;
+  }
+
+  _renderListEvent(ev, day) {
+    const bg = this._eventBackground(ev);
+    const reminderCls = ev.isReminder ? " fb-reminder" : "";
+    const prefix = ev.isReminder ? "🔔 " : "";
+    const dataAttr = ev.isReminder
+      ? `data-todo="${this._escape(ev.todoEntity || "")}" data-uid="${this._escape(ev.uid || "")}"`
+      : `data-sources="${encodeURIComponent(JSON.stringify(ev.sources))}"`;
+    let timeLabel;
+    if (ev.allDay || this._spansFullDay(ev, day)) {
+      timeLabel = "Hele dag";
+    } else {
+      const dStart = this._startOfDay(day);
+      const dEnd = this._addDays(dStart, 1);
+      const startsToday = ev.startDate >= dStart;
+      const endsToday = ev.endDate <= dEnd;
+      const startStr = startsToday ? this._formatTime(ev.startDate) : "…";
+      const endStr = endsToday ? this._formatTime(ev.endDate) : "…";
+      timeLabel = `${startStr} – ${endStr}`;
+    }
+    const title = this._escape(ev.summary || "(geen titel)");
+    return `
+      <div class="fb-list-event${reminderCls}" ${dataAttr}>
+        <div class="fb-list-event-bar" style="background:${bg};"></div>
+        <div class="fb-list-event-body">
+          <div class="fb-list-event-time">${this._escape(timeLabel)}</div>
+          <div class="fb-list-event-title">${prefix}${title}</div>
+        </div>
+      </div>
+    `;
   }
 
   // Does the event overlap day d (00:00 - 24:00)?

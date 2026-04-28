@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `familyboard-calendar-card`: new **list** layout that groups events by day
+  (large date number, weekday short name, weather chip, color-bar per event,
+  reminders inline). Selected via the new `layout_entity` config option,
+  intended to be bound to `select.familyboard_layout` so the existing
+  `familyboard-view-card` toggles between time-grid and list in place.
+- `familyboard-filter-card` and `familyboard-view-card`: new `alignment`
+  config option (`start` / `center` / `end` / `justify`, with friendly
+  aliases `left` / `middle` / `right` / `uitlijnen`). Forwarded to the
+  underlying `mushroom-chips-card` and exposed in each card's visual editor.
+
+### Fixed
+- `familyboard-calendar-card`: day-header date and weather chip overlapped
+  on narrow widths (portrait week / 2-weeks view). Header is now a flex row
+  with container-query breakpoints that drop weather temperatures (then the
+  whole weather chip) when columns become too narrow.
+
 ## [0.1.0] - 2026-04-23
 
 Initial public release.
