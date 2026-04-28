@@ -30,6 +30,26 @@
 const DEFAULT_ENTITY = "select.familyboard_view";
 const DEFAULT_REMINDERS_SWITCH = "switch.familyboard_show_reminders";
 
+// Accept friendly aliases for mushroom-chips-card `alignment` values.
+const ALIGNMENT_MAP = {
+  left: "start",
+  begin: "start",
+  start: "start",
+  middle: "center",
+  center: "center",
+  centre: "center",
+  right: "end",
+  end: "end",
+  uitlijnen: "justify",
+  justify: "justify",
+  spread: "justify",
+};
+
+function normalizeAlignment(v) {
+  if (!v) return null;
+  return ALIGNMENT_MAP[String(v).toLowerCase()] || null;
+}
+
 const DEFAULT_ICONS = {
   today: "mdi:calendar-today",
   tomorrow: "mdi:calendar-arrow-right",
@@ -86,11 +106,13 @@ class FamilyBoardViewCard extends HTMLElement {
       extra_chips: Array.isArray(config.extra_chips) ? config.extra_chips : [],
       hidden_options: Array.isArray(config.hidden_options) ? config.hidden_options : [],
       visible_options: Array.isArray(config.visible_options) ? config.visible_options : null,
+      alignment: normalizeAlignment(config.alignment),
       ...config,
     };
-    // Make sure caller's config doesn't accidentally override the normalized arrays.
+    // Make sure caller's config doesn't accidentally override the normalized values.
     this._config.hidden_options = Array.isArray(config.hidden_options) ? config.hidden_options : [];
     this._config.visible_options = Array.isArray(config.visible_options) ? config.visible_options : null;
+    this._config.alignment = normalizeAlignment(config.alignment);
   }
 
   set hass(hass) {
@@ -198,6 +220,7 @@ class FamilyBoardViewCard extends HTMLElement {
       x: this._config.extra_chips.length,
       h: this._config.hidden_options,
       v: this._config.visible_options,
+      a: this._config.alignment || "",
       r: this._config.show_reminders
         ? this._hass.states[this._config.reminders_switch]?.state || ""
         : "",
@@ -210,6 +233,7 @@ class FamilyBoardViewCard extends HTMLElement {
 
     const chips = this._buildChips(stateObj);
     const cardConfig = { type: "custom:mushroom-chips-card", chips };
+    if (this._config.alignment) cardConfig.alignment = this._config.alignment;
 
     let helpers;
     try {
@@ -237,6 +261,20 @@ const VIEW_EDITOR_SCHEMA = [
   { name: "color", selector: { text: {} } },
   { name: "show_reminders", selector: { boolean: {} } },
   { name: "reminders_switch", selector: { entity: { domain: "switch" } } },
+  {
+    name: "alignment",
+    selector: {
+      select: {
+        mode: "dropdown",
+        options: [
+          { value: "start", label: "Links" },
+          { value: "center", label: "Midden" },
+          { value: "end", label: "Rechts" },
+          { value: "justify", label: "Uitlijnen" },
+        ],
+      },
+    },
+  },
 ];
 
 class FamilyBoardViewCardEditor extends HTMLElement {
