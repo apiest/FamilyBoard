@@ -106,3 +106,39 @@ MEAL_PENALTY_ANCHORS: tuple[tuple[int, float], ...] = (
     (14, 1.0),
     (30, 0.0),
 )
+
+# Phase 2.5: AI-assisted meal suggestion
+MEAL_SUGGESTION_ENTITY = "sensor.familyboard_meal_suggestion"
+MEAL_SUGGESTION_STORAGE_KEY = "familyboard_meal_suggestion"
+MEAL_SUGGESTION_STORAGE_VERSION = 1
+MEAL_SUGGESTION_PLACEHOLDER = "Geen suggestie"
+# Bucket thresholds used by the prompt builder when classifying recent meals.
+MEAL_AVOID_DAYS = 14  # days_since < this → "recently eaten, do not suggest"
+MEAL_FAVORITE_DAYS = 21  # days_since >= this → "forgotten favorite, inspire"
+DEFAULT_MEAL_MAX_MINUTES = 30
+DEFAULT_MEAL_CUISINES: tuple[str, ...] = (
+    "Nederlands",
+    "Italiaans",
+    "Mexicaans",
+    "Aziatisch",
+    "Mediterraans",
+    "Midden-Oosters",
+)
+DEFAULT_MEAL_PANTRY: tuple[str, ...] = (
+    "zout",
+    "peper",
+    "olie",
+    "boter",
+    "ui",
+    "knoflook",
+    "kruiden",
+    "melk",
+    "eieren",
+    "rijst",
+    "pasta",
+    "sojasaus",
+    "ketjap",
+    "tomatenblik",
+    "bouillonblokjes",
+)
+DEFAULT_MEAL_RESTRICTIONS: tuple[str, ...] = ()

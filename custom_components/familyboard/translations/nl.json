@@ -21,6 +21,7 @@
           "shared_calendars": "Gedeelde agenda's",
           "shared_chores": "Gedeelde taken",
           "general": "Algemene instellingen",
+          "meal_planner": "Maaltijdplanner (AI)",
           "save": "Opslaan en sluiten"
         }
       },
@@ -111,6 +112,19 @@
         "data": {
           "meal_calendar": "Maaltijdenagenda"
         }
+      },
+      "meal_planner": {
+        "title": "Maaltijdplanner (AI)",
+        "description": "Configureer de AI-suggestie. Lege velden gebruiken de standaardwaarden. Geef één item per regel.",
+        "data": {
+          "ai_task_entity": "AI-task entiteit (verplicht)",
+          "shopping_list": "Boodschappenlijst (todo)",
+          "max_minutes": "Maximale bereidingstijd (min)",
+          "cuisines": "Keukens (één per regel)",
+          "pantry_staples": "Voorraadkast-items (één per regel)",
+          "restrictions": "Restricties (één per regel)",
+          "extra_notes": "Extra instructies (vrije tekst)"
+        }
       }
     },
     "error": {
@@ -127,6 +141,7 @@
       "compliment": { "name": "Begroeting" },
       "meals": { "name": "Maaltijden" },
       "recent_meals": { "name": "Recente maaltijden" },
+      "meal_suggestion": { "name": "Maaltijdsuggestie" },
       "members": { "name": "Leden" },
       "progress": { "name": "Voortgang" }
     },
@@ -197,6 +212,28 @@
           "description": "De Google Tasks uid van de herinnering die geannuleerd moet worden."
         }
       }
+    },
+    "suggest_meal": {
+      "name": "Maaltijd voorstellen",
+      "description": "Genereer een maaltijdsuggestie via ai_task.generate_data en sla deze op in sensor.familyboard_meal_suggestion.",
+      "fields": {
+        "date": {
+          "name": "Doel-datum",
+          "description": "De datum waarvoor de maaltijd is. Standaard vandaag."
+        },
+        "ai_task_entity": {
+          "name": "AI-task entiteit",
+          "description": "Eenmalige override van de geconfigureerde ai_task_entity."
+        }
+      }
+    },
+    "accept_meal_suggestion": {
+      "name": "Suggestie accepteren",
+      "description": "Plant de huidige suggestie als event op meal_calendar en voegt ingrediënten toe aan de boodschappenlijst."
+    },
+    "clear_meal_suggestion": {
+      "name": "Suggestie verwijderen",
+      "description": "Verwijder de huidige maaltijdsuggestie zonder actie."
     }
   }
 }

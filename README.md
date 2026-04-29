@@ -139,6 +139,22 @@ familyboard:
       members: [Person_1, Person_2]
       name: Groceries
   meal_calendar: calendar.meals
+  meal_planner:
+    ai_task_entity: ai_task.gpt_oss_20b   # required for suggest_meal
+    shopping_list: todo.groceries         # optional; ingredients land here on accept
+    cuisines: [Nederlands, Italiaans, Mexicaans, Aziatisch, Mediterraans]
+    pantry_staples: [zout, peper, olie, boter, ui, knoflook, kruiden,
+                     melk, eieren, rijst, pasta, sojasaus, ketjap,
+                     tomatenblik, bouillonblokjes]
+    restrictions:
+      - "Geen paprika"
+      - "Geen vis"
+    max_minutes: 30
+    day_overrides:
+      thursday:
+        note: "Training om 18:00 — kies iets heel makkelijks"
+        max_minutes: 15
+    extra_notes: ""
 ```
 
 ### Member options
@@ -194,6 +210,23 @@ familyboard:
 | `name` | no | — | Display name |
 | `color` | no | — | Color (hex) |
 
+### Meal planner options (`meal_planner`)
+
+Drives the AI dinner-suggestion service
+(`familyboard.suggest_meal`). All keys except `ai_task_entity` are
+optional; defaults are baked in.
+
+| Key | Required | Default | Description |
+|-----|----------|---------|-------------|
+| `ai_task_entity` | yes | — | `ai_task.*` entity that backs `ai_task.generate_data` |
+| `shopping_list` | no | — | `todo.*` entity ingredients are appended to on accept |
+| `cuisines` | no | NL/IT/MX/Asian/Med/ME | List of cuisines for variation hints. **User list replaces the default fully when set.** |
+| `pantry_staples` | no | sensible NL kitchen list | Items the model should NOT add to the shopping list. **User list replaces the default fully when set.** |
+| `restrictions` | no | `[]` | Hard rules ("Geen paprika", "Geen vis", …) |
+| `max_minutes` | no | `30` | Maximum total prep time hint |
+| `day_overrides` | no | `{}` | Per-weekday tweaks. Keys are lowercase English weekday names. Each entry may set `note` and/or `max_minutes`. |
+| `extra_notes` | no | `""` | Free-form text appended at the end of the prompt |
+
 ## Entities created
 
 ### Calendars
@@ -214,6 +247,7 @@ familyboard:
 | `sensor.familyboard_compliment` | Time-of-day greeting |
 | `sensor.familyboard_meals` | Tonight's meal + 7-day week strip (requires `meal_calendar`) |
 | `sensor.familyboard_recent_meals` | Top recent meal titles scored by usage and recency for the quick picker |
+| `sensor.familyboard_meal_suggestion` | Latest AI-generated dinner suggestion (state = title; attrs = `date`, `reason`, `ingredients`, `generated_at`) |
 | `binary_sensor.familyboard_meals_unplanned` | `on` when any of the next 7 days has no meal entry; placeholders count as planned |
 
 #### Meal placeholders

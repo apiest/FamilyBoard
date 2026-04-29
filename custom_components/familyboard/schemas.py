@@ -60,6 +60,33 @@ SHARED_CHORE_SCHEMA = vol.Schema(
     }
 )
 
+# Phase 2.5: AI-assisted meal suggestion. ``ai_task_entity`` is the only
+# required field. ``day_overrides`` keys are lowercase English weekday
+# names (``monday``..``sunday``).
+DAY_OVERRIDE_SCHEMA = vol.Schema(
+    {
+        vol.Optional("note"): cv.string,
+        vol.Optional("max_minutes"): vol.All(int, vol.Range(min=1, max=240)),
+    }
+)
+
+MEAL_PLANNER_SCHEMA = vol.Schema(
+    {
+        vol.Required("ai_task_entity"): cv.entity_id,
+        vol.Optional("shopping_list"): cv.entity_id,
+        vol.Optional("cuisines", default=[]): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("pantry_staples", default=[]): vol.All(
+            cv.ensure_list, [cv.string]
+        ),
+        vol.Optional("restrictions", default=[]): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("max_minutes"): vol.All(int, vol.Range(min=1, max=240)),
+        vol.Optional("day_overrides", default={}): vol.Schema(
+            {cv.string: DAY_OVERRIDE_SCHEMA}
+        ),
+        vol.Optional("extra_notes", default=""): cv.string,
+    }
+)
+
 OPTIONS_SCHEMA = vol.Schema(
     {
         vol.Required("members", default=[]): vol.All(cv.ensure_list, [MEMBER_SCHEMA]),
@@ -71,6 +98,7 @@ OPTIONS_SCHEMA = vol.Schema(
             cv.ensure_list, [SHARED_CHORE_SCHEMA]
         ),
         vol.Optional("meal_calendar"): cv.entity_id,
+        vol.Optional("meal_planner"): MEAL_PLANNER_SCHEMA,
     }
 )
 

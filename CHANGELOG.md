@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-29
+
+### Added
+- Meal planning Phase 2.5: AI-assisted dinner suggestion. New
+  `meal_planner` config block (cuisines, pantry staples, restrictions,
+  per-weekday overrides, optional shopping list target) drives a
+  server-side prompt builder that calls `ai_task.generate_data`. Three
+  new services: `familyboard.suggest_meal` (with optional `date`),
+  `familyboard.accept_meal_suggestion`, and
+  `familyboard.clear_meal_suggestion`. New `sensor.familyboard_meal_suggestion`
+  exposes the latest suggestion (state = title, attrs = date / reason
+  / ingredients / generated_at). Dashboard chip "Maaltijd" opens a
+  popup with Vandaag/Morgen/Overmorgen quick picks and an Accept that
+  creates the calendar event and appends ingredients to the configured
+  shopping list. Suggestion persists across restarts.
+- Options-flow step **Maaltijdplanner (AI)** for editing the
+  `meal_planner` block from the UI (AI task entity, shopping list,
+  max minutes, cuisines / pantry / restrictions / extra notes — all
+  multi-line, one item per line). `day_overrides` remain YAML-only
+  for now and are preserved across UI edits.
+
 ## [0.2.1] - 2026-04-29
 
 ### Changed
