@@ -873,14 +873,27 @@ class FamilyBoardCalendarCard extends HTMLElement {
       }
 
       .fb-allday-row {
-        display: contents;
-      }
-      .fb-allday-cell {
+        display: grid;
+        grid-template-columns: 1fr;
+        grid-auto-rows: 20px;
+        gap: 2px 0;
+        padding: 2px 0;
         border-bottom: 1px solid var(--fb-border);
-        border-left: 1px solid var(--fb-border);
-        padding: 2px;
-        min-height: 22px;
         position: relative;
+        min-height: 24px;
+      }
+      .fb-grid.cols-2 .fb-allday-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .fb-grid.cols-5 .fb-allday-row { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+      .fb-grid.cols-7 .fb-allday-row { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+      .fb-grid.cols-14 .fb-allday-row { grid-template-columns: repeat(14, minmax(60px, 1fr)); }
+      .fb-allday-bg {
+        grid-row: 1 / -1;
+        border-left: 1px solid var(--fb-border);
+        z-index: 0;
+      }
+      .fb-allday-bg:first-child { border-left: none; }
+      .fb-allday-bg.today {
+        background: color-mix(in srgb, var(--primary-color) 8%, transparent);
       }
       .fb-allday-label {
         border-bottom: 1px solid var(--fb-border);
@@ -889,20 +902,32 @@ class FamilyBoardCalendarCard extends HTMLElement {
         color: var(--fb-muted);
         text-align: right;
       }
-      .fb-allday-event {
-        display: block;
-        padding: 2px 6px;
-        margin: 1px 0;
+      .fb-allday-bar {
+        margin: 0 2px;
+        padding: 0 6px;
         font-size: 0.78em;
+        line-height: 18px;
+        height: 18px;
         border-radius: 3px;
-        color: white;
-        cursor: pointer;
+        color: #fff;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        cursor: pointer;
         text-shadow: 0 1px 1px rgba(0,0,0,0.4);
+        z-index: 1;
       }
-      .fb-event.fb-reminder, .fb-allday-event.fb-reminder {
+      .fb-allday-bar.fb-cont-prev {
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+        margin-left: 0;
+      }
+      .fb-allday-bar.fb-cont-next {
+        border-top-right-radius: 0;
+        border-bottom-right-radius: 0;
+        margin-right: 0;
+      }
+      .fb-event.fb-reminder, .fb-allday-bar.fb-reminder {
         box-shadow: inset 0 0 0 999px rgba(0,0,0,0.28), 0 1px 2px rgba(0,0,0,0.3);
       }
 
@@ -1254,15 +1279,70 @@ class FamilyBoardCalendarCard extends HTMLElement {
     const reminderEvents = this._buildReminderEvents();
     const allEvents = [...this._events, ...reminderEvents];
 
-    // partition events per day
-    const eventsByDay = days.map(() => ({ allDay: [], timed: [] }));
+    // Classify events into the all-day row vs the timed grid.
+    // An event belongs to the all-day row if it is a true all-day event,
+    // if it spans more than one visible day, or if it covers a full visible day.
+    // This lets us render multi-day bars continuously across day columns
+    // (matching the month view) instead of cutting them per cell.
+    const gridStartTs = this._startOfDay(days[0]);
+    const gridEndTs = this._addDays(this._startOfDay(days[days.length - 1]), 1);
+    const eventsByDay = days.map(() => ({ timed: [] }));
+    const alldaySegments = [];
     for (const ev of allEvents) {
+      let firstIdx = -1;
+      let lastIdx = -1;
       for (let i = 0; i < days.length; i++) {
         if (this._eventOnDay(ev, days[i])) {
-          if (ev.allDay || this._spansFullDay(ev, days[i])) eventsByDay[i].allDay.push(ev);
-          else eventsByDay[i].timed.push(ev);
+          if (firstIdx < 0) firstIdx = i;
+          lastIdx = i;
         }
       }
+      if (firstIdx < 0) continue;
+      const multiDay = lastIdx > firstIdx;
+      const longRunning = ev.endDate - ev.startDate >= 23 * 3600 * 1000;
+      const inAllDay =
+        ev.allDay || multiDay || longRunning || this._spansFullDay(ev, days[firstIdx]);
+      if (inAllDay) {
+        alldaySegments.push({
+          ev,
+          startCol: firstIdx,
+          span: lastIdx - firstIdx + 1,
+          isContPrev: ev.startDate < gridStartTs,
+          isContNext: ev.endDate > gridEndTs,
+        });
+      } else {
+        for (let i = firstIdx; i <= lastIdx; i++) {
+          eventsByDay[i].timed.push(ev);
+        }
+      }
+    }
+
+    // Greedy lane assignment for all-day bars.
+    // Sort: longer spans first (so multi-day bars sit on top), then true
+    // all-day before time-promoted, then earliest start.
+    alldaySegments.sort((a, b) => {
+      if (b.span !== a.span) return b.span - a.span;
+      const ad = a.ev.allDay ? 0 : 1;
+      const bd = b.ev.allDay ? 0 : 1;
+      if (ad !== bd) return ad - bd;
+      return a.ev.startDate - b.ev.startDate;
+    });
+    const alldayUsed = new Set();
+    const alldayPlaced = [];
+    for (const seg of alldaySegments) {
+      let s = 0;
+      while (s < 32) {
+        let ok = true;
+        for (let d = seg.startCol; d < seg.startCol + seg.span; d++) {
+          if (alldayUsed.has(`${d}|${s}`)) { ok = false; break; }
+        }
+        if (ok) break;
+        s++;
+      }
+      for (let d = seg.startCol; d < seg.startCol + seg.span; d++) {
+        alldayUsed.add(`${d}|${s}`);
+      }
+      alldayPlaced.push({ ...seg, slot: s });
     }
 
     // Extend hour range for events that start/end on this day.
@@ -1307,7 +1387,6 @@ class FamilyBoardCalendarCard extends HTMLElement {
 
     // Header row + all-day row
     let dayHeaders = `<div class="fb-day-header" style="border-right:1px solid var(--fb-border);"></div>`;
-    let alldayCells = `<div class="fb-allday-label">Hele dag</div>`;
     for (let i = 0; i < numDays; i++) {
       const d = days[i];
       const isToday = this._isSameDay(d, today);
@@ -1319,11 +1398,21 @@ class FamilyBoardCalendarCard extends HTMLElement {
         </div>
         ${wx}
       </div>`;
-      const adHtml = eventsByDay[i].allDay
-        .map((ev, idx) => this._renderAllDayBlock(ev, idx))
-        .join("");
-      alldayCells += `<div class="fb-allday-cell">${adHtml}</div>`;
     }
+
+    // All-day row spans every day column with a sub-grid so multi-day
+    // events render as a single continuous bar (like the month view).
+    let alldayBgs = "";
+    for (let i = 0; i < numDays; i++) {
+      const d = days[i];
+      const isToday = this._isSameDay(d, today);
+      alldayBgs += `<div class="fb-allday-bg${isToday ? " today" : ""}" style="grid-column:${i + 1};"></div>`;
+    }
+    const alldayBars = alldayPlaced
+      .map((seg) => this._renderAllDayBar(seg))
+      .join("");
+    const alldayLabel = `<div class="fb-allday-label">Hele dag</div>`;
+    const alldayRow = `<div class="fb-allday-row" style="grid-column: 2 / span ${numDays};">${alldayBgs}${alldayBars}</div>`;
 
     // Day columns + now-line
     let dayCols = "";
@@ -1353,7 +1442,8 @@ class FamilyBoardCalendarCard extends HTMLElement {
       ${loading}
       <div class="fb-grid${colsClass}" style="--fb-hour-height:${hourHeight}px;">
         ${dayHeaders}
-        ${alldayCells}
+        ${alldayLabel}
+        ${alldayRow}
         ${axisCol}
         ${dayCols}
       </div>
@@ -1779,14 +1869,25 @@ class FamilyBoardCalendarCard extends HTMLElement {
     `;
   }
 
-  _renderAllDayBlock(ev, idx) {
+  _renderAllDayBar(seg) {
+    const ev = seg.ev;
     const bg = this._eventBackground(ev);
     const reminderCls = ev.isReminder ? " fb-reminder" : "";
-    const prefix = ev.isReminder ? "🔔 " : "";
     const dataAttr = ev.isReminder
       ? `data-todo="${this._escape(ev.todoEntity || "")}" data-uid="${this._escape(ev.uid || "")}"`
       : `data-sources="${encodeURIComponent(JSON.stringify(ev.sources))}"`;
-    return `<span class="fb-allday-event${reminderCls}" ${dataAttr} style="background:${bg};">${prefix}${this._escape(ev.summary || "(geen titel)")}</span>`;
+    // No time prefix for the all-day row: by construction every bar here
+    // either is all-day, spans multiple days, or covers (nearly) a full day.
+    const prefix = ev.isReminder ? "🔔 " : "";
+    const contClasses = [
+      seg.isContPrev ? "fb-cont-prev" : "",
+      seg.isContNext ? "fb-cont-next" : "",
+    ].filter(Boolean).join(" ");
+    const arrowL = seg.isContPrev ? "‹ " : "";
+    const arrowR = seg.isContNext ? " ›" : "";
+    return `<span class="fb-allday-bar${reminderCls} ${contClasses}" ${dataAttr}
+      style="grid-column:${seg.startCol + 1} / span ${seg.span}; grid-row:${seg.slot + 1}; background:${bg};"
+      title="${this._escape(ev.summary || "")}">${arrowL}${prefix}${this._escape(ev.summary || "(geen titel)")}${arrowR}</span>`;
   }
 
   _wireEventClicks() {

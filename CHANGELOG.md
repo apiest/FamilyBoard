@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-29
+
+### Changed
+- `familyboard-calendar-card` day / 2-day / week / work-week / 2-week views
+  now render multi-day all-day events as a single continuous bar across the
+  day columns (matching the month view), with `‹` / `›` arrows on segments
+  that continue beyond the visible range. Single-day events that span
+  (almost) a full 24h (e.g. an "all-day" entry imported with explicit
+  00:00–23:59 times) are also promoted to the all-day row instead of
+  rendering as a 00:00 block in the time grid. Bars are stacked
+  longest-span first so multi-day events sit on top.
+
 ## [0.2.0] - 2026-04-28
 
 ### Added
