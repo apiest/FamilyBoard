@@ -27,6 +27,7 @@ from .const import (
     DOMAIN,
     MEAL_LOOKAHEAD_DAYS,
     MEAL_PLACEHOLDER,
+    MEAL_SUGGESTION_PLACEHOLDER,
     get_device_info,
 )
 
@@ -48,6 +49,7 @@ async def async_setup_entry(
             FamilyBoardComplimentSensor(),
             FamilyBoardMealsSensor(coordinator, conf),
             FamilyBoardRecentMealsSensor(coordinator, conf),
+            FamilyBoardMealSuggestionSensor(coordinator),
             FamilyBoardMembersSensor(coordinator),
             FamilyBoardProgressSensor(coordinator),
         ],
@@ -310,4 +312,52 @@ class FamilyBoardRecentMealsSensor(CoordinatorEntity, SensorEntity):
         return {
             "items": self._items(),
             "meal_calendar_entity": self._conf.get("meal_calendar"),
+        }
+
+
+class FamilyBoardMealSuggestionSensor(CoordinatorEntity, SensorEntity):
+    """Sensor exposing the latest AI meal suggestion (Phase 2.5).
+
+    State is the suggested meal title (or
+    :data:`MEAL_SUGGESTION_PLACEHOLDER` when no suggestion exists).
+    Attributes carry the full structured suggestion (``date``,
+    ``reason``, ``ingredients``, ``generated_at``) so the dashboard
+    can render the popup and the accept-action.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "meal_suggestion"
+
+    def __init__(self, coordinator: DataUpdateCoordinator) -> None:
+        """Store the coordinator."""
+        super().__init__(coordinator)
+        self._attr_unique_id = "familyboard_meal_suggestion"
+        self._attr_suggested_object_id = "familyboard_meal_suggestion"
+        self._attr_icon = "mdi:chef-hat"
+        self._attr_device_info = get_device_info()
+
+    def _suggestion(self) -> dict | None:
+        """Return the stored suggestion dict from the coordinator."""
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.data.get("meal_suggestion")
+
+    @property
+    def native_value(self) -> str:
+        """Return the suggested title or the empty placeholder."""
+        s = self._suggestion()
+        if s and s.get("title"):
+            return s["title"]
+        return MEAL_SUGGESTION_PLACEHOLDER
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Expose the full suggestion payload for the popup card."""
+        s = self._suggestion() or {}
+        return {
+            "date": s.get("date"),
+            "title": s.get("title"),
+            "reason": s.get("reason"),
+            "ingredients": s.get("ingredients") or [],
+            "generated_at": s.get("generated_at"),
         }

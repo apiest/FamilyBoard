@@ -20,6 +20,7 @@ import voluptuous as vol
 from .const import DEVICE_NAME, DOMAIN
 from .schemas import (
     EXTRA_CALENDAR_SCHEMA,
+    MEAL_PLANNER_SCHEMA,
     MEMBER_SCHEMA,
     OPTIONS_SCHEMA,
     SHARED_CALENDAR_SCHEMA,
@@ -150,6 +151,11 @@ def _normalize_options(
         meal = existing.get("meal_calendar")
     if meal:
         base["meal_calendar"] = meal
+    planner = raw.get("meal_planner")
+    if not planner and existing:
+        planner = existing.get("meal_planner")
+    if planner:
+        base["meal_planner"] = planner
     return base
 
 
@@ -207,6 +213,7 @@ class FamilyBoardOptionsFlow(config_entries.OptionsFlow):
                 "shared_calendars",
                 "shared_chores",
                 "general",
+                "meal_planner",
                 "save",
             ],
         )
@@ -238,6 +245,98 @@ class FamilyBoardOptionsFlow(config_entries.OptionsFlow):
                     ): _entity("calendar"),
                 }
             ),
+        )
+
+    async def async_step_meal_planner(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Edit the AI meal-planner configuration (Phase 2.5).
+
+        Multi-line text fields are split on newlines into a list. Empty
+        fields fall back to the defaults baked into ``const.py`` at
+        prompt-build time. ``day_overrides`` is preserved from the
+        existing options (YAML-only for v1).
+        """
+        existing = self._options.get("meal_planner") or {}
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            data: dict[str, Any] = {}
+            ai_entity = (user_input.get("ai_task_entity") or "").strip()
+            if not ai_entity:
+                # Empty submit clears the planner entirely.
+                self._options.pop("meal_planner", None)
+                return self.async_create_entry(title="", data=self._options)
+            data["ai_task_entity"] = ai_entity
+
+            shopping = (user_input.get("shopping_list") or "").strip()
+            if shopping:
+                data["shopping_list"] = shopping
+
+            max_min = user_input.get("max_minutes")
+            if max_min:
+                data["max_minutes"] = int(max_min)
+
+            for key in ("cuisines", "pantry_staples", "restrictions"):
+                items = _split_lines(user_input.get(key, ""))
+                if items:
+                    data[key] = items
+
+            extra_notes = (user_input.get("extra_notes") or "").strip()
+            if extra_notes:
+                data["extra_notes"] = extra_notes
+
+            # Preserve day_overrides set via YAML (no UI for v1).
+            if existing.get("day_overrides"):
+                data["day_overrides"] = existing["day_overrides"]
+
+            try:
+                validated = MEAL_PLANNER_SCHEMA(data)
+            except vol.Invalid as err:
+                errors["base"] = str(err)
+            else:
+                self._options["meal_planner"] = validated
+                return self.async_create_entry(title="", data=self._options)
+
+        return self.async_show_form(
+            step_id="meal_planner",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        "ai_task_entity",
+                        default=existing.get("ai_task_entity", ""),
+                    ): _entity("ai_task"),
+                    vol.Optional(
+                        "shopping_list",
+                        default=existing.get("shopping_list", ""),
+                    ): _entity("todo"),
+                    vol.Optional(
+                        "max_minutes",
+                        default=existing.get("max_minutes", 30),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1, max=240, step=1, mode="box"
+                        )
+                    ),
+                    vol.Optional(
+                        "cuisines",
+                        default="\n".join(existing.get("cuisines") or []),
+                    ): _multiline(),
+                    vol.Optional(
+                        "pantry_staples",
+                        default="\n".join(existing.get("pantry_staples") or []),
+                    ): _multiline(),
+                    vol.Optional(
+                        "restrictions",
+                        default="\n".join(existing.get("restrictions") or []),
+                    ): _multiline(),
+                    vol.Optional(
+                        "extra_notes",
+                        default=existing.get("extra_notes", ""),
+                    ): _multiline(),
+                }
+            ),
+            errors=errors,
         )
 
     async def async_step_save(
@@ -748,6 +847,13 @@ def _strip_empties(data: dict[str, Any]) -> dict[str, Any]:
             continue
         out[k] = v
     return out
+
+
+def _split_lines(value: str | None) -> list[str]:
+    """Split a multi-line text field into a stripped list, dropping empties."""
+    if not value:
+        return []
+    return [line.strip() for line in value.splitlines() if line.strip()]
 
 
 __all__ = ["OPTIONS_SCHEMA", "FamilyBoardConfigFlow", "FamilyBoardOptionsFlow"]

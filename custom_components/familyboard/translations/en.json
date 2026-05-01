@@ -21,6 +21,7 @@
           "shared_calendars": "Shared calendars",
           "shared_chores": "Shared chores",
           "general": "General settings",
+          "meal_planner": "Meal planner (AI)",
           "save": "Save and exit"
         }
       },
@@ -111,6 +112,19 @@
         "data": {
           "meal_calendar": "Meal calendar"
         }
+      },
+      "meal_planner": {
+        "title": "Meal planner (AI)",
+        "description": "Configure the AI suggestion. Empty fields use sensible defaults. One item per line.",
+        "data": {
+          "ai_task_entity": "AI task entity (required)",
+          "shopping_list": "Shopping list (todo)",
+          "max_minutes": "Maximum prep time (min)",
+          "cuisines": "Cuisines (one per line)",
+          "pantry_staples": "Pantry staples (one per line)",
+          "restrictions": "Restrictions (one per line)",
+          "extra_notes": "Extra instructions (free text)"
+        }
       }
     },
     "error": {
@@ -127,6 +141,7 @@
       "compliment": { "name": "Greeting" },
       "meals": { "name": "Meals" },
       "recent_meals": { "name": "Recent meals" },
+      "meal_suggestion": { "name": "Meal suggestion" },
       "members": { "name": "Members" },
       "progress": { "name": "Progress" }
     },
@@ -197,6 +212,28 @@
           "description": "The Google Tasks uid of the reminder to cancel."
         }
       }
+    },
+    "suggest_meal": {
+      "name": "Suggest meal",
+      "description": "Generate a meal suggestion via ai_task.generate_data and store it on sensor.familyboard_meal_suggestion.",
+      "fields": {
+        "date": {
+          "name": "Target date",
+          "description": "The date the meal is for. Defaults to today."
+        },
+        "ai_task_entity": {
+          "name": "AI task entity",
+          "description": "One-shot override of the configured ai_task_entity."
+        }
+      }
+    },
+    "accept_meal_suggestion": {
+      "name": "Accept suggestion",
+      "description": "Plan the current suggestion as a meal_calendar event and append ingredients to the shopping list."
+    },
+    "clear_meal_suggestion": {
+      "name": "Clear suggestion",
+      "description": "Discard the current meal suggestion without acting on it."
     }
   }
 }
