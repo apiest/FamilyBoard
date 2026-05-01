@@ -292,7 +292,15 @@ entity: sensor.familyboard_chores
 filter_entity: select.familyboard_calendar
 view_entity: select.familyboard_view
 members_entity: sensor.familyboard_members
+# Optional:
+#   member: Person_1     # bind card to one member (or 'shared' for the algemene list)
+#   show_shared: false   # hide shared chores from a personal/all view
+#   show_header: false   # hide the member/shared header
 ```
+
+Set `member: shared` to render only the shared ("algemene") chores; the
+`filter_entity` member chips and the `show_shared` toggle are ignored in that
+mode. The view filter (`view_entity`) still scopes the date window.
 
 ## Dashboard options
 

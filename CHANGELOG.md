@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `familyboard-chores-card`: new `show_shared` option (default `true`) to hide
+  shared ("algemene") chores, and a `member: shared` value that turns the
+  card into a shared-only view with an "Algemene taken" header. The card
+  editor exposes `member` as a dropdown of configured family members plus an
+  "Algemene (gedeeld)" option.
+
 ## [0.2.1] - 2026-04-29
 
 ### Changed
