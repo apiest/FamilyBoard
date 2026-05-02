@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Progress card celebration** — when a member's daily progress ring
+  hits 100% the ring briefly pulses with a glow and a small confetti
+  burst, drawing attention to the "all done" moment without adding any
+  extra noise to the rest of the dashboard. Animation is suppressed
+  for users with `prefers-reduced-motion: reduce`.
+
+### Fixed
+- Locked the per-member progress logic for shared chores with a new
+  test (`tests/test_progress.py`): completing a shared chore now has
+  guardrails ensuring it credits *every* member listed on the chore.
+  No code change — the existing fan-out already does this; the test
+  prevents future regressions.
+
 ## [0.3.0] - 2026-05-02
 
 ### Added

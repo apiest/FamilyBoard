@@ -15,6 +15,14 @@ class FamilyBoardProgressCard extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._hass = null;
     this._config = {};
+    // Per-member "was already at 100% on the last render" flag, so we
+    // only celebrate the *transition* to full and reset when the day
+    // rolls over (total resets).
+    this._lastFull = new Map();
+    // Per-member "currently celebrating" flag — protects against the
+    // animation re-triggering on every coordinator tick while still 100%.
+    this._celebrating = new Set();
+    this._lastSig = "";
   }
 
   setConfig(config) {
@@ -26,7 +34,20 @@ class FamilyBoardProgressCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    this._render();
+    // Only re-render when the progress sensor (or its members payload)
+    // actually changed. Otherwise unrelated state updates would wipe an
+    // in-flight confetti animation.
+    const stateObj = hass && this._config.entity
+      ? hass.states[this._config.entity]
+      : null;
+    const sig = stateObj
+      ? `${stateObj.state}|${JSON.stringify(stateObj.attributes.members || [])}`
+      : "";
+    if (sig !== this._lastSig) {
+      this._lastSig = sig;
+      this._render();
+    }
+    this._maybeCelebrate();
   }
 
   _render() {
@@ -135,6 +156,44 @@ class FamilyBoardProgressCard extends HTMLElement {
         text-align: center;
         padding: 12px 0;
       }
+      /* --- Reward animation: triggered on the transition to 100%. --- */
+      .ring-container.celebrate svg {
+        animation: fb-ring-pulse 0.6s ease-out 2;
+      }
+      .ring-container.celebrate .ring-fg {
+        filter: drop-shadow(0 0 8px var(--fb-celebrate-color, #ffd166));
+      }
+      @keyframes fb-ring-pulse {
+        0%   { transform: rotate(-90deg) scale(1); }
+        50%  { transform: rotate(-90deg) scale(1.12); }
+        100% { transform: rotate(-90deg) scale(1); }
+      }
+      .confetti {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        pointer-events: none;
+        opacity: 0;
+        will-change: transform, opacity;
+        animation: fb-confetti 1.4s ease-out forwards;
+      }
+      @keyframes fb-confetti {
+        0%   { transform: translate(-50%, -50%) rotate(0deg); opacity: 1; }
+        100% {
+          transform:
+            translate(calc(-50% + var(--fb-dx, 40px)),
+                      calc(-50% + var(--fb-dy, -40px)))
+            rotate(var(--fb-rot, 360deg));
+          opacity: 0;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .ring-container.celebrate svg { animation: none; }
+        .confetti { display: none; }
+      }
     `;
 
     let html = `<style>${style}</style><div class="card">`;
@@ -164,7 +223,7 @@ class FamilyBoardProgressCard extends HTMLElement {
 
         html += `
           <div class="member-progress">
-            <div class="ring-container">
+            <div class="ring-container" data-member="${this._escAttr(m.name || "")}" style="--fb-celebrate-color:${this._escAttr(color)}">
               <svg viewBox="0 0 64 64">
                 <circle class="ring-bg" cx="32" cy="32" r="${radius}" />
                 <circle class="ring-fg" cx="32" cy="32" r="${radius}"
@@ -185,6 +244,68 @@ class FamilyBoardProgressCard extends HTMLElement {
 
     html += `</div>`;
     this.shadowRoot.innerHTML = html;
+  }
+
+  _maybeCelebrate() {
+    if (!this._hass || !this._config.entity) return;
+    const stateObj = this._hass.states[this._config.entity];
+    if (!stateObj) return;
+    const members = stateObj.attributes.members || [];
+    const seen = new Set();
+    for (const m of members) {
+      const name = m.name || "";
+      if (!name) continue;
+      seen.add(name);
+      const total = m.total || 0;
+      const completed = m.completed || 0;
+      const isFull = total > 0 && completed >= total;
+      const wasFull = this._lastFull.get(name) === true;
+      this._lastFull.set(name, isFull);
+      if (isFull && !wasFull && !this._celebrating.has(name)) {
+        this._celebrate(name, m.color || "#4A90D9");
+      }
+    }
+    // Drop tracking for members no longer in the sensor (config change).
+    for (const name of Array.from(this._lastFull.keys())) {
+      if (!seen.has(name)) this._lastFull.delete(name);
+    }
+  }
+
+  _celebrate(name, color) {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const container = root.querySelector(
+      `.ring-container[data-member="${CSS.escape(name)}"]`,
+    );
+    if (!container) return;
+    this._celebrating.add(name);
+    container.classList.add("celebrate");
+
+    // Spawn ~16 confetti dots with randomized trajectories.
+    const palette = [color, "#FFD166", "#A8C8EC", "#B5E0C2", "#F4C2D7"];
+    const dots = [];
+    for (let i = 0; i < 16; i++) {
+      const dot = document.createElement("span");
+      dot.className = "confetti";
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 32 + Math.random() * 28;
+      const dx = Math.cos(angle) * distance;
+      const dy = Math.sin(angle) * distance;
+      const rot = (Math.random() * 720 - 360).toFixed(0);
+      dot.style.setProperty("--fb-dx", `${dx.toFixed(0)}px`);
+      dot.style.setProperty("--fb-dy", `${dy.toFixed(0)}px`);
+      dot.style.setProperty("--fb-rot", `${rot}deg`);
+      dot.style.background = palette[i % palette.length];
+      dot.style.animationDelay = `${(Math.random() * 0.15).toFixed(2)}s`;
+      container.appendChild(dot);
+      dots.push(dot);
+    }
+
+    setTimeout(() => {
+      container.classList.remove("celebrate");
+      for (const d of dots) d.remove();
+      this._celebrating.delete(name);
+    }, 1800);
   }
 
   _presenceFor(personEntity) {

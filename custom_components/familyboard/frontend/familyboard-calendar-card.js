@@ -183,9 +183,15 @@ class FamilyBoardCalendarCard extends HTMLElement {
       const dow = (today.getDay() - fw + 7) % 7;
       this._currentStart = this._addDays(today, -dow);
     } else if (viewSelectState === "work_week") {
-      // always snap to Monday of current week
-      const dow = (today.getDay() + 6) % 7; // Mon=0
-      this._currentStart = this._addDays(today, -dow);
+      // Mon-Fri: snap to Monday of this week. On weekends (Sat/Sun)
+      // anchor to today so the next 5 days are visible instead of an
+      // empty Sat/Sun tail of the week we already finished.
+      const day = today.getDay(); // 0=Sun..6=Sat
+      if (day === 0 || day === 6) {
+        this._currentStart = today;
+      } else {
+        this._currentStart = this._addDays(today, -(day - 1));
+      }
     } else if (viewSelectState === "month") {
       this._currentStart = new Date(today.getFullYear(), today.getMonth(), 1);
     }
@@ -1573,19 +1579,18 @@ class FamilyBoardCalendarCard extends HTMLElement {
 
   _buildHourLabels(startHour, endHour, hourHeight, occupiedHours) {
     let html = "";
-    for (let h = startHour; h <= endHour; h++) {
+    // We label the *start* of each hour slot (07:00 marks the 7→8 slot,
+    // …, (endHour-1):00 marks the last slot). The closing edge
+    // (endHour) is intentionally not labeled — it's the bottom border
+    // of the grid and any label there would either get clipped or
+    // collide with the previous hour. The hour above already conveys
+    // position.
+    for (let h = startHour; h < endHour; h++) {
       // Smart-skip startHour label if no event overlaps it (avoids visual clash with all-day row)
       if (h === startHour && occupiedHours && !occupiedHours.has(h)) continue;
-      // Smart-skip endHour label too if no event overlaps the previous hour
-      if (h === endHour && occupiedHours && !occupiedHours.has(h - 1)) continue;
       const top = (h - startHour) * hourHeight;
-      let translate = "translateY(2px)";
-      // Last label sits at the very bottom of the grid where the hour
-      // gridline cuts through the digits and looks like strikethrough.
-      // Lift it a few pixels so the line sits below the label.
-      if (h === endHour) translate = "translateY(calc(-100% - 6px))";
-      const label = h === 24 ? "24:00" : `${String(h).padStart(2, "0")}:00`;
-      html += `<div class="fb-hour-label" style="position:absolute;top:${top}px;right:4px;transform:${translate};">${label}</div>`;
+      const label = `${String(h).padStart(2, "0")}:00`;
+      html += `<div class="fb-hour-label" style="position:absolute;top:${top}px;right:4px;transform:translateY(2px);">${label}</div>`;
     }
     return html;
   }
