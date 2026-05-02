@@ -5,12 +5,15 @@ from __future__ import annotations
 from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 
+from .const import CALENDAR_CATEGORIES
+
 EXTRA_CALENDAR_SCHEMA = vol.Schema(
     {
         vol.Required("entity"): cv.entity_id,
         vol.Required("label"): cv.string,
         vol.Optional("default_summary"): cv.string,
         vol.Optional("default_description"): cv.string,
+        vol.Optional("category"): vol.In(CALENDAR_CATEGORIES),
     }
 )
 
@@ -21,6 +24,8 @@ TRASH_SCHEMA = vol.Schema(
         vol.Optional("label"): cv.string,
         vol.Optional("color"): cv.string,
         vol.Optional("emoji"): cv.string,
+        vol.Optional("reminder_bins", default=True): cv.boolean,
+        vol.Optional("reminder_kliko", default=True): cv.boolean,
     }
 )
 
@@ -38,6 +43,7 @@ MEMBER_SCHEMA = vol.Schema(
         vol.Optional("person"): cv.entity_id,
         vol.Optional("color", default="#4A90D9"): cv.string,
         vol.Optional("notify"): cv.string,
+        vol.Optional("category"): vol.In(CALENDAR_CATEGORIES),
     }
 )
 
@@ -47,6 +53,7 @@ SHARED_CALENDAR_SCHEMA = vol.Schema(
         vol.Required("members"): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional("name"): cv.string,
         vol.Optional("color"): cv.string,
+        vol.Optional("category"): vol.In(CALENDAR_CATEGORIES),
     }
 )
 

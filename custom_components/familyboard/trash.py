@@ -100,6 +100,10 @@ class TrashChoreManager:
             return
 
         for t in self.trash_config:
+            want_bins = t.get("reminder_bins", True)
+            want_kliko = t.get("reminder_kliko", True)
+            if not want_bins and not want_kliko:
+                continue
             sensor_id = t["sensor"]
             ttype = t["type"]
             state = self.hass.states.get(sensor_id)
@@ -131,18 +135,20 @@ class TrashChoreManager:
             )
 
             # Chore 1: Prullenbakken legen — evening before
-            due_bins = (collection_date - timedelta(days=1)).isoformat()
-            summary_bins = f"{emoji} Prullenbakken legen ({label})"
-            await self._ensure_chore(
-                ttype, "bins", summary_bins, due_bins, collection_date
-            )
+            if want_bins:
+                due_bins = (collection_date - timedelta(days=1)).isoformat()
+                summary_bins = f"{emoji} Prullenbakken legen ({label})"
+                await self._ensure_chore(
+                    ttype, "bins", summary_bins, due_bins, collection_date
+                )
 
             # Chore 2: Kliko aan de weg zetten — morning of collection
-            due_kliko = collection_date.isoformat()
-            summary_kliko = f"{emoji} Kliko aan de weg zetten ({label})"
-            await self._ensure_chore(
-                ttype, "kliko", summary_kliko, due_kliko, collection_date
-            )
+            if want_kliko:
+                due_kliko = collection_date.isoformat()
+                summary_kliko = f"{emoji} Kliko aan de weg zetten ({label})"
+                await self._ensure_chore(
+                    ttype, "kliko", summary_kliko, due_kliko, collection_date
+                )
 
         await self._save()
 

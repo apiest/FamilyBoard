@@ -154,8 +154,8 @@
         "name": "View",
         "state": {
           "today": "Today",
-          "tomorrow": "Tomorrow",
-          "today_tomorrow": "Today + Tomorrow",
+          "2_days": "2 Days",
+          "3_days": "3 Days",
           "week": "Week",
           "work_week": "Work week",
           "two_weeks": "2 Weeks",
@@ -174,7 +174,13 @@
     },
     "switch": {
       "event_all_day": { "name": "Event all day" },
-      "show_reminders": { "name": "Show reminders" }
+      "show_reminders": { "name": "Show reminders" },
+      "category_personal": { "name": "Personal" },
+      "category_work": { "name": "Work" },
+      "category_school": { "name": "School" },
+      "category_hobby": { "name": "Hobby" },
+      "category_family": { "name": "Family" },
+      "category_other": { "name": "Other" }
     },
     "text": {
       "event_title": { "name": "Event title" },

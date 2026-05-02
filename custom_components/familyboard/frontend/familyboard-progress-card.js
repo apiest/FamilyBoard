@@ -47,7 +47,7 @@ class FamilyBoardProgressCard extends HTMLElement {
       .card {
         padding: 16px;
         background: var(--ha-card-background, var(--card-background-color, rgba(255,255,255,0.04)));
-        border-radius: var(--ha-card-border-radius, 16px);
+        border-radius: var(--ha-card-border-radius, 20px);
         border: 1px solid var(--ha-card-border-color, rgba(255,255,255,0.06));
       }
       .progress-grid {
@@ -108,17 +108,17 @@ class FamilyBoardProgressCard extends HTMLElement {
         color: white;
       }
       .member-name {
-        font-size: 0.85em;
+        font-size: 0.95em;
         color: var(--primary-text-color, #e6edf3);
         font-weight: 500;
         text-align: center;
       }
       .member-count {
-        font-size: 0.75em;
+        font-size: 0.85em;
         color: var(--secondary-text-color, #8b949e);
       }
       .member-presence {
-        font-size: 0.7em;
+        font-size: 0.8em;
         color: var(--secondary-text-color, #8b949e);
         text-transform: capitalize;
         opacity: 0.85;

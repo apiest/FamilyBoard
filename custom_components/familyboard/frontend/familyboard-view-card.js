@@ -18,7 +18,7 @@
  *   show_reminders: true                         # optional, append a Herinneringen toggle chip
  *   reminders_switch: switch.familyboard_show_reminders  # optional, entity backing the chip
  *   hidden_options:                              # optional, hide chips for these option keys
- *     - tomorrow
+ *     - 2_days
  *     - work_week
  *   visible_options:                             # optional, whitelist (wins over hidden_options)
  *     - today
@@ -50,13 +50,23 @@ function normalizeAlignment(v) {
   return ALIGNMENT_MAP[String(v).toLowerCase()] || null;
 }
 
+const CHIP_LABEL_STYLE = `
+  ha-card {
+    --chip-font-size: 0.95rem;
+    --chip-font-weight: 600;
+    --chip-icon-size: 1.4rem;
+    --chip-height: 40px;
+    --chip-padding: 0 12px;
+  }
+`;
+
 const DEFAULT_ICONS = {
   today: "mdi:calendar-today",
-  tomorrow: "mdi:calendar-arrow-right",
-  today_tomorrow: "mdi:calendar-multiple",
+  "2_days": "mdi:calendar-multiple",
+  "3_days": "mdi:calendar-range",
   week: "mdi:calendar-week",
   work_week: "mdi:briefcase-clock",
-  two_weeks: "mdi:calendar-range",
+  two_weeks: "mdi:calendar-expand-horizontal",
   month: "mdi:calendar-month",
   list: "mdi:view-list",
   agenda: "mdi:calendar-star",
@@ -165,6 +175,7 @@ class FamilyBoardViewCard extends HTMLElement {
         target: { entity_id: this._config.entity },
         data: { option: opt },
       },
+      card_mod: { style: CHIP_LABEL_STYLE },
     }));
     if (this._config.show_reminders) {
       const swEntity = this._config.reminders_switch;
@@ -180,6 +191,7 @@ class FamilyBoardViewCard extends HTMLElement {
           perform_action: "switch.toggle",
           target: { entity_id: swEntity },
         },
+        card_mod: { style: CHIP_LABEL_STYLE },
       });
     }
     for (const extra of this._config.extra_chips) {
@@ -232,7 +244,11 @@ class FamilyBoardViewCard extends HTMLElement {
     this._lastSig = sig;
 
     const chips = this._buildChips(stateObj);
-    const cardConfig = { type: "custom:mushroom-chips-card", chips };
+    const cardConfig = {
+      type: "custom:mushroom-chips-card",
+      chips,
+      card_mod: { style: CHIP_LABEL_STYLE },
+    };
     if (this._config.alignment) cardConfig.alignment = this._config.alignment;
 
     let helpers;

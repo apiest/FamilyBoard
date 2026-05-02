@@ -81,6 +81,7 @@ _FRONTEND_RESOURCES: list[tuple[str, str]] = [
     ("familyboard_card", "familyboard-chores-card.js"),
     ("familyboard_filter_card", "familyboard-filter-card.js"),
     ("familyboard_view_card", "familyboard-view-card.js"),
+    ("familyboard_category_card", "familyboard-category-card.js"),
     ("familyboard_calendar_card", "familyboard-calendar-card.js"),
     ("familyboard_progress_card", "familyboard-progress-card.js"),
     ("familyboard_countdown_card", "familyboard-countdown-card.js"),
@@ -878,10 +879,10 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         today = now.date()
         if view == "today":
             return (today.isoformat(), today.isoformat())
-        if view == "tomorrow":
+        if view == "2_days":
             return (today.isoformat(), (today + timedelta(days=1)).isoformat())
-        if view == "today_tomorrow":
-            return (today.isoformat(), (today + timedelta(days=1)).isoformat())
+        if view == "3_days":
+            return (today.isoformat(), (today + timedelta(days=2)).isoformat())
         if view == "week":
             return (today.isoformat(), (today + timedelta(days=7)).isoformat())
         if view == "work_week":

@@ -61,23 +61,44 @@ SNOOZE_MAX_MIN = 240
 # come from translations (entity.select.<key>.state.<key>).
 VIEW_OPTIONS = [
     "today",
-    "tomorrow",
-    "today_tomorrow",
-    "week",
+    "2_days",
+    "3_days",
     "work_week",
+    "week",
     "two_weeks",
     "month",
 ]
 LAYOUT_OPTIONS = ["list", "agenda"]
 ALLES = "Alles"
+
+# Calendar category enum. Stable, language-neutral keys; user-visible
+# labels live in translations (entity.select.calendar_category.state.<key>).
+CALENDAR_CATEGORIES: tuple[str, ...] = (
+    "personal",
+    "work",
+    "school",
+    "hobby",
+    "family",
+    "other",
+)
+DEFAULT_CALENDAR_CATEGORY = "personal"
+# Shared calendars are conceptually personal too — they default to the same
+# category so toggling "Personal" off behaves consistently for events from
+# either source. Users can still tag a shared calendar with an explicit
+# `category:` in YAML to opt it into a different filter chip.
+DEFAULT_SHARED_CALENDAR_CATEGORY = DEFAULT_CALENDAR_CATEGORY
+CATEGORY_FILTER_ENTITY = "select.familyboard_calendar_category"
 # Legacy Dutch state values from earlier releases — restored states are mapped
 # into the new keys to avoid breaking existing installs.
 LEGACY_VIEW_STATE_MAP: dict[str, str] = {
     "Vandaag": "today",
-    "Morgen": "tomorrow",
+    "Morgen": "today",
+    "Vandaag + Morgen": "2_days",
     "Week": "week",
     "2 Weken": "two_weeks",
     "Maand": "month",
+    "tomorrow": "today",
+    "today_tomorrow": "2_days",
 }
 LEGACY_LAYOUT_STATE_MAP: dict[str, str] = {
     "Lijst": "list",

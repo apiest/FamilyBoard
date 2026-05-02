@@ -57,6 +57,7 @@ FamilyBoard doesn't ask my family to change how they function; it changes the en
 - **Per-member progress sensor** — daily completion tracking with color rings.
 - **Interactive snooze reminders** — actionable mobile_app notifications scheduled at task start time, with persistence across HA restarts and away-aware delivery.
 - **Custom Lovelace cards** — composable building blocks: `chores`, `calendar`, `filter`, `progress`, `countdown`. Each takes its own config; users can mix them into any dashboard.
+- **Calendar category filter** — tag each calendar with a category (`personal`, `work`, `school`, `hobby`, `family`, `shared`, `other`); the dashboard renders one toggle chip per category in use, so you can hide the work calendar with one tap. Toggle state survives restarts.
 - **Add-event form entities** — built-in `select`, `text`, `switch` and `datetime` entities power a "create event" form with cascading member → calendar pickers.
 - **Event countdown** — kiosk-editable countdown to a single target date (label + date), rendered by `custom:familyboard-countdown-card`. Auto-hides when no label is set and self-clears the day after the event.
 
@@ -166,11 +167,27 @@ familyboard:
 | `calendar_label` | no | `<name> privé` | Label shown in calendar picker |
 | `calendar_default_summary` | no | — | Fallback summary for events without one |
 | `calendar_default_description` | no | — | Fallback description for events without one |
-| `color` | no | `#4A90D9` | Member color (hex) |
+| `color` | no | `#4A90D9` | Member color (hex). See *Recommended palette* below. |
 | `person` | no | — | `person.*` entity for presence + avatar |
 | `notify` | no | — | `mobile_app_*` notify target for reminders |
 | `chores` | no | `[]` | List of `todo.*` entity_ids |
 | `extra_calendars` | no | `[]` | Additional calendars (see below) |
+| `category` | no | `personal` | Calendar category for the filter chips. One of `personal`, `work`, `school`, `hobby`, `family`, `shared`, `other`. |
+
+#### Recommended palette
+
+The dashboard auto-picks dark or light text per event, so any color works,
+but a softer pastel palette is friendlier on a wall-mounted tablet. All
+three pass WCAG AA contrast against the auto-picked dark text:
+
+| Member | Hex |
+|--------|-----|
+| Blue | `#A8C8EC` |
+| Green | `#B5E0C2` |
+| Pink | `#F4C2D7` |
+
+If you prefer the original saturated palette (`#4A90D9`, `#27AE60`,
+`#F39C12`, …) just leave `color:` as-is — text will stay white on those.
 
 ### Extra calendar options
 
@@ -180,6 +197,7 @@ familyboard:
 | `label` | yes | — | Display label in pickers |
 | `default_summary` | no | — | Fallback summary |
 | `default_description` | no | — | Fallback description |
+| `category` | no | parent member's category | Calendar category for the filter chips (see *Member options*). |
 
 ### Trash options
 
@@ -188,8 +206,10 @@ familyboard:
 | `type` | yes | — | Trash type identifier (`rest`, `paper`, `gft`, `pmd`, …) |
 | `sensor` | yes | — | Sensor entity with the next collection date as state |
 | `label` | no | from sensor | Display label |
-| `color` | no | per-type default | Color (hex) |
+| `color` | no | `#B8B8B8` | Color (hex) |
 | `emoji` | no | per-type default | Emoji prefix |
+| `reminder_bins` | no | `true` | When `false`, skip the auto-created "prullenbakken legen" chore (evening before collection). |
+| `reminder_kliko` | no | `true` | When `false`, skip the auto-created "kliko aan de weg" chore (morning of collection). |
 
 ### Shared calendar options
 
@@ -199,6 +219,7 @@ familyboard:
 | `members` | yes | — | List of member names |
 | `name` | no | — | Display name |
 | `color` | no | — | Color (hex) |
+| `category` | no | `shared` | Calendar category for the filter chips (see *Member options*). |
 
 ### Shared chore options
 
@@ -286,7 +307,7 @@ automation:
 | Entity | Description |
 |--------|-------------|
 | `select.familyboard_calendar` | Member/Alles filter chip |
-| `select.familyboard_view` | Time window (Vandaag/Morgen/Week/2 Weken/Maand) |
+| `select.familyboard_view` | Time window (Vandaag/2 Dagen/3 Dagen/Werkweek/Week/2 Weken/Maand) |
 | `select.familyboard_layout` | Layout mode (Lijst/Agenda) |
 | `select.familyboard_event_member` | Add-event: member picker |
 | `select.familyboard_event_calendar` | Add-event: calendar picker (cascades from member) |

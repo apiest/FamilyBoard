@@ -7,31 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-05-01
+## [0.3.0] - 2026-05-02
 
 ### Added
-- Meal planning Phase 2.5: AI-assisted dinner suggestion. New
+- **Meal planning Phase 2.5** — AI-assisted dinner suggestion. New
   `meal_planner` config block (cuisines, pantry staples, restrictions,
   per-weekday overrides, optional shopping list target) drives a
-  server-side prompt builder that calls `ai_task.generate_data`. Three
-  new services: `familyboard.suggest_meal` (with optional `date`),
-  `familyboard.accept_meal_suggestion`, and
-  `familyboard.clear_meal_suggestion`. New `sensor.familyboard_meal_suggestion`
-  exposes the latest suggestion (state = title, attrs = date / reason
-  / ingredients / generated_at). Dashboard chip "Maaltijd" opens a
-  popup with Vandaag/Morgen/Overmorgen quick picks and an Accept that
-  creates the calendar event and appends ingredients to the configured
-  shopping list. Suggestion persists across restarts.
-- Options-flow step **Maaltijdplanner (AI)** for editing the
-  `meal_planner` block from the UI (AI task entity, shopping list,
-  max minutes, cuisines / pantry / restrictions / extra notes — all
-  multi-line, one item per line). `day_overrides` remain YAML-only
-  for now and are preserved across UI edits.
-- `familyboard-chores-card`: new `show_shared` option (default `true`) to hide
-  shared ("algemene") chores, and a `member: shared` value that turns the
-  card into a shared-only view with an "Algemene taken" header. The card
-  editor exposes `member` as a dropdown of configured family members plus an
+  server-side prompt builder that calls `ai_task.generate_data`. New
+  services: `familyboard.suggest_meal` (with optional `date`),
+  `familyboard.accept_meal_suggestion` and
+  `familyboard.clear_meal_suggestion`. New
+  `sensor.familyboard_meal_suggestion` exposes the latest suggestion
+  (state = title; attrs = date / reason / ingredients / generated_at)
+  and persists across restarts. Dashboard chip "Maaltijd" opens a popup
+  with Vandaag/Morgen/Overmorgen quick picks; Accept creates the
+  calendar event and appends ingredients to the configured shopping
+  list. Editable from the UI via a new options-flow step
+  **Maaltijdplanner (AI)** (AI task entity, shopping list, max minutes,
+  cuisines / pantry / restrictions / extra notes — multi-line, one per
+  line). `day_overrides` remain YAML-only and are preserved across UI
+  edits.
+- **Calendar category filter** — new `category:` field on `members[]`,
+  `members[].extra_calendars[]` and `shared_calendars[]`, one of
+  `personal`, `work`, `school`, `hobby`, `family`, `other` (default
+  `personal` for both members and shared calendars). One
+  `switch.familyboard_category_<key>` is created per category in use
+  (default on, restored on restart) and stale switches are purged from
+  the entity registry when the matching category disappears from YAML.
+  The dashboard strategy auto-renders a chip row above the calendar;
+  `familyboard-calendar-card` auto-discovers
+  `switch.familyboard_category_*` (override via `category_switches:`)
+  and hides events whose categories are all currently disabled. Trash
+  and reminders are never filtered. New standalone
+  `custom:familyboard-category-card` for manual dashboards.
+- **Chores card scoping** — `familyboard-chores-card` gains
+  `show_shared` (default `true`) to hide shared ("algemene") chores,
+  and a `member: shared` value that turns the card into a shared-only
+  view with an "Algemene taken" header. The card editor exposes
+  `member` as a dropdown of configured family members plus an
   "Algemene (gedeeld)" option.
+- **Trash chore granularity** — `trash[].reminder_bins` and
+  `trash[].reminder_kliko` (both default `true`) skip just one of the
+  two auto-created chores per trash type (e.g. `reminder_bins: false`
+  to keep only the "kliko aan de weg" reminder).
+- **Calendar entity attributes** — `FamilyBoardProxyCalendar` now
+  exposes `color` and `category` as state attributes so frontend cards
+  inherit them from `configuration.yaml` automatically. Dashboard YAML
+  no longer needs a hardcoded `colors:` map on
+  `familyboard-calendar-card`.
+- README *Recommended palette* (pastel blue/green/pink) for member
+  colors. Optional — auto-contrast text keeps any palette readable.
+
+### Changed
+- **Calendar styling** — events are larger, rounder and friendlier on
+  a wall-mounted tablet. Event font size is view-scoped via a
+  `--fb-event-font` CSS variable (Day ~1.05em → 2 weeks ~0.82em, with
+  a small bump on screens ≥ 900px). All-day bars grew to 22px tall
+  with 9px rounded corners and the multi-member gradient angle was
+  softened from 135° to 120°. Event text auto-picks dark or light
+  foreground from the background luminance (WCAG-aware) so pastel
+  member colors stay readable without forcing white text.
+- Slightly larger secondary text and rounder corners (16 → 20px) on
+  the chores, progress and countdown cards.
+- **View options reworked** — removed `tomorrow` and `today_tomorrow`;
+  added `2_days` (Vandaag + 1) and `3_days` (Vandaag + 2). Restored
+  states migrate automatically (`tomorrow → today`,
+  `today_tomorrow → 2_days`, `Vandaag + Morgen → 2_days`).
+- View chip labels are larger and bolder (~0.95rem / 600) on
+  `familyboard-view-card` so they stay legible on a wall-mounted
+  tablet.
+- **Trash colors** — calendar card honors the per-event color encoded
+  in the `[FB:trash=…;color=…]` description marker, so each trash type
+  renders in its configured `trash[].color` straight from
+  `configuration.yaml`. The default color was simplified to a single
+  pastel grey (`#B8B8B8`); override per type via `trash[].color`.
 
 ## [0.2.1] - 2026-04-29
 

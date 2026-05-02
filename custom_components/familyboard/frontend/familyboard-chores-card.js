@@ -306,7 +306,7 @@ class FamilyBoardChoresCard extends HTMLElement {
       .card {
         padding: 16px;
         background: var(--ha-card-background, var(--card-background-color, rgba(255,255,255,0.04)));
-        border-radius: var(--ha-card-border-radius, 16px);
+        border-radius: var(--ha-card-border-radius, 20px);
         border: 1px solid var(--ha-card-border-color, rgba(255,255,255,0.06));
       }
       .empty {
@@ -394,7 +394,7 @@ class FamilyBoardChoresCard extends HTMLElement {
       }
       .task-summary {
         color: var(--primary-text-color, #e6edf3);
-        font-size: 1em;
+        font-size: 1.05em;
         line-height: 1.3;
         white-space: nowrap;
         overflow: hidden;
@@ -402,12 +402,12 @@ class FamilyBoardChoresCard extends HTMLElement {
       }
       .task-time {
         color: var(--secondary-text-color, #8b949e);
-        font-size: 0.82em;
+        font-size: 0.92em;
         margin-top: 1px;
       }
       .task-desc {
         color: var(--secondary-text-color, #8b949e);
-        font-size: 0.82em;
+        font-size: 0.88em;
         margin-top: 2px;
         opacity: 0.8;
         white-space: nowrap;

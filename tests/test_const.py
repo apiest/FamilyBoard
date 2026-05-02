@@ -9,6 +9,7 @@ from custom_components.familyboard.const import (
     DEVICE_NAME,
     DOMAIN,
     LAYOUT_OPTIONS,
+    LEGACY_VIEW_STATE_MAP,
     VIEW_OPTIONS,
     get_device_info,
 )
@@ -29,14 +30,24 @@ def test_view_and_layout_options_are_lists() -> None:
     # Stable, language-neutral keys; user-visible labels live in translations.
     assert VIEW_OPTIONS == [
         "today",
-        "tomorrow",
-        "today_tomorrow",
-        "week",
+        "2_days",
+        "3_days",
         "work_week",
+        "week",
         "two_weeks",
         "month",
     ]
     assert LAYOUT_OPTIONS == ["list", "agenda"]
+
+
+def test_legacy_view_state_map_migrates_removed_keys() -> None:
+    # Restored states from earlier releases must round-trip into the
+    # current `VIEW_OPTIONS` keys without losing the user's selection.
+    assert LEGACY_VIEW_STATE_MAP["tomorrow"] == "today"
+    assert LEGACY_VIEW_STATE_MAP["today_tomorrow"] == "2_days"
+    assert LEGACY_VIEW_STATE_MAP["Vandaag + Morgen"] == "2_days"
+    for mapped in LEGACY_VIEW_STATE_MAP.values():
+        assert mapped in VIEW_OPTIONS
 
 
 def test_domain_is_familyboard() -> None:

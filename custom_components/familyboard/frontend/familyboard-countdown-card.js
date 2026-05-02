@@ -156,7 +156,7 @@ class FamilyBoardCountdownCard extends HTMLElement {
         }
         .text {
           flex: 1;
-          font-size: 1.15em;
+          font-size: 1.25em;
           line-height: 1.3;
         }
         button.gear {
