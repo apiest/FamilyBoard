@@ -24,8 +24,12 @@ TRASH_SCHEMA = vol.Schema(
         vol.Optional("label"): cv.string,
         vol.Optional("color"): cv.string,
         vol.Optional("emoji"): cv.string,
-        vol.Optional("reminder_bins", default=True): cv.boolean,
-        vol.Optional("reminder_kliko", default=True): cv.boolean,
+        # Default False for new (UI-added) entries: adding a trash sensor
+        # no longer silently auto-creates two chores. The YAML / v1
+        # migration paths preserve the legacy True default — see
+        # ``subentries.upsert_yaml`` / ``migrate_options_to_subentries``.
+        vol.Optional("reminder_bins", default=False): cv.boolean,
+        vol.Optional("reminder_kliko", default=False): cv.boolean,
     }
 )
 

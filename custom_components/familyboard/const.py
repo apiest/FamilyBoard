@@ -8,6 +8,38 @@ DOMAIN = "familyboard"
 SCAN_INTERVAL_MINUTES = 5
 TASK_IDENTIFIER = "tasks.google.com"
 
+# Config-entry version. Bumped to 2 in v0.4.0 when list-shaped config
+# (members, trash, shared_*, meal_planner.day_overrides) was migrated
+# into HA subentries — see ``async_migrate_entry``.
+CONFIG_ENTRY_VERSION = 2
+
+# Subentry types managed via the integration page.
+SUBENTRY_MEMBER = "member"
+SUBENTRY_EXTRA_CALENDAR = "extra_calendar"
+SUBENTRY_SHARED_CALENDAR = "shared_calendar"
+SUBENTRY_SHARED_CHORE = "shared_chore"
+SUBENTRY_TRASH = "trash"
+SUBENTRY_MEAL_PLANNER = "meal_planner"
+SUBENTRY_MEAL_DAY_OVERRIDE = "meal_day_override"
+SUBENTRY_TYPES: tuple[str, ...] = (
+    SUBENTRY_MEMBER,
+    SUBENTRY_EXTRA_CALENDAR,
+    SUBENTRY_SHARED_CALENDAR,
+    SUBENTRY_SHARED_CHORE,
+    SUBENTRY_TRASH,
+    SUBENTRY_MEAL_PLANNER,
+    SUBENTRY_MEAL_DAY_OVERRIDE,
+)
+WEEKDAYS: tuple[str, ...] = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+
 # Shared device for all FamilyBoard entities
 DEVICE_IDENTIFIER = (DOMAIN, "familyboard_main")
 DEVICE_NAME = "FamilyBoard"

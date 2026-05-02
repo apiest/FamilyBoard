@@ -8,18 +8,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Subentry-based configuration.** Members, extra calendars, shared
+  calendars, shared chores, trash sensors, the meal planner and
+  per-weekday meal overrides are now individual *sub-items* on the
+  integration page (Settings → Devices & Services → FamilyBoard →
+  click ➕). Add, edit and remove each one separately instead of
+  navigating one giant options-flow form.
 - **Progress card celebration** — when a member's daily progress ring
   hits 100% the ring briefly pulses with a glow and a small confetti
-  burst, drawing attention to the "all done" moment without adding any
-  extra noise to the rest of the dashboard. Animation is suppressed
-  for users with `prefers-reduced-motion: reduce`.
+  burst, drawing attention to the "all done" moment. Animation is
+  suppressed for users with `prefers-reduced-motion: reduce`.
+
+### Changed
+- Config-entry version bumped to **2**. Existing v1 entries are
+  migrated automatically on first start: every list item in
+  `entry.options` becomes a subentry with a stable `unique_id`.
+  Migration is idempotent.
+- YAML configuration still works and is now **upserted** into
+  sub-items by stable identity. Sub-items you added via the UI
+  without a YAML twin are preserved across re-imports.
+- **Trash auto-chore reminders are now opt-in for new entries.** When
+  you add a trash sub-item via the UI, both *empty bins* and *kliko
+  at the curb* default to **off**; tick the boxes you want. Existing
+  YAML / migrated v1 entries keep the legacy default-on behaviour
+  via a migration carve-out.
+- The classic options flow is now an informational placeholder; all
+  configuration moved to sub-items.
 
 ### Fixed
 - Locked the per-member progress logic for shared chores with a new
-  test (`tests/test_progress.py`): completing a shared chore now has
-  guardrails ensuring it credits *every* member listed on the chore.
-  No code change — the existing fan-out already does this; the test
-  prevents future regressions.
+  test (`tests/test_progress.py`): completing a shared chore credits
+  *every* member listed on the chore. Test prevents future
+  regressions.
 
 ## [0.3.0] - 2026-05-02
 
