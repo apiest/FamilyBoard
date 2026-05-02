@@ -357,6 +357,75 @@ Set `member: shared` to render only the shared ("algemene") chores; the
 `filter_entity` member chips and the `show_shared` toggle are ignored in that
 mode. The view filter (`view_entity`) still scopes the date window.
 
+### Event decorations
+
+The calendar card can blend a full-color illustration into a timed
+event tile, picked from the title. Illustrations are inlined as SVG
+and each color role (accent, dark, skin, …) is painted through a CSS
+custom property, so the host page can re-theme them per tile, per
+member or via a HA theme without editing the SVGs.
+
+Enable with `event_images: true` on the calendar card:
+
+```yaml
+type: custom:familyboard-calendar-card
+event_images: true
+# … other options
+```
+
+How matching works:
+
+- The title is lowercased, accents stripped, then split into tokens.
+- A built-in NL + EN keyword map routes the first matching token to a
+  theme key. 23 themes ship out of the box: `birthday`, `beer`,
+  `bbq`, `party`, `school`, `phone`, `work`, `badminton`, `fishing`,
+  `walking`, `hiking`, `outdoors`, `gym`, `doctor`, `food`, `camping`,
+  `travel`, `family`, `friends`, `shopping`, `cleaning`, `pet`,
+  `music`.
+- The theme picks an SVG from `frontend/icons/events/<key>.svg`. The
+  SVG is sourced from [unDraw](https://undraw.co/) and re-mapped so
+  every fill resolves to a `--fb-deco-*` CSS variable.
+- **No keyword match → no decoration.** The tile renders plainly.
+- Tile size decides the layout: ≥ 120 px tall gets a banner across
+  the tile; 56–120 px gets a corner badge at bottom-right that scales
+  with the tile (4:3, capped at 96×72); shorter or compact tiles
+  stay plain.
+- Reminders/chores skip the decoration entirely.
+
+Themable color roles (defaults shown):
+
+| Variable              | Default     | Used for                        |
+|-----------------------|-------------|---------------------------------|
+| `--fb-deco-accent`    | `#2a9d8f`   | primary accent (main object)    |
+| `--fb-deco-accent-2`  | `#ffd166`   | secondary accent / highlight    |
+| `--fb-deco-dark`      | `#1d3557`   | silhouettes, clothing, outlines |
+| `--fb-deco-grey`      | `#a8dadc`   | neutral background shapes       |
+| `--fb-deco-skin`      | `#f6c8a8`   | skin tones                      |
+| `--fb-deco-light`     | `#ffffff`   | light highlights                |
+
+A few themes ship with per-theme overrides where the defaults
+under-read (e.g. `friends`, `beer`, `fishing`). Override globally
+from your HA theme:
+
+```yaml
+familyboard:
+  card-mod-theme: familyboard
+  card-mod-root-yaml: |
+    .: |
+      familyboard-calendar-card { --fb-deco-accent: #ff0066; }
+```
+
+Per-event override marker (anywhere in the description):
+
+- `[FB:theme=<key>]` — force a specific theme.
+- `[FB:theme=none]` — suppress the decoration for one event even
+  when a keyword would have matched.
+
+To add a new theme, drop a themable SVG at
+`custom_components/familyboard/frontend/icons/events/<key>.svg` (use
+`var(--fb-deco-*, fallback)` for fills you want re-themable) and add
+the keyword to `event-themes.js`.
+
 ## Dashboard options
 
 There are two ways to use FamilyBoard in your dashboards:
@@ -472,6 +541,10 @@ This project was developed with substantial help from AI coding assistants
 (GitHub Copilot / Claude). All code has been reviewed, tested against Home
 Assistant 2026.4.x and is maintained by a human — but if you spot a quirk that
 smells like an LLM hallucination, please open an issue.
+
+Built-in event-decoration scenes are based on illustrations from
+[unDraw](https://undraw.co/) (no attribution required by their license, but
+credit where credit is due).
 
 ## Support
 

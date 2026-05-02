@@ -7,23 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-02
+
 ### Added
+- **Decorative event illustrations.** Opt-in `event_images: true`
+  card option on `custom:familyboard-calendar-card` inlines a
+  full-color illustration into timed event tiles, picked from the
+  title via a built-in NL + EN keyword map (23 themes: birthday,
+  beer, bbq, party, school, phone, work, badminton, fishing,
+  walking, hiking, outdoors, gym, doctor, food, camping, travel,
+  family, friends, shopping, cleaning, pet, music). SVGs are
+  sourced from [unDraw](https://undraw.co/) and re-mapped so every
+  fill resolves to a `--fb-deco-*` CSS variable (`accent`,
+  `accent-2`, `dark`, `grey`, `skin`, `light`) — themable per tile,
+  per member, or globally via a HA theme. A handful of scenes
+  (`friends`, `beer`, `fishing`) ship with per-theme overrides where
+  the defaults under-read. Tile height decides the layout: ≥ 120 px
+  gets a full-bleed banner; 56–120 px gets a corner badge at
+  bottom-right that scales 4:3 with the tile (capped at 96×72);
+  shorter/compact tiles stay plain. Pure client-side, deterministic,
+  offline. **No fallback** — when no keyword matches, the tile
+  renders plainly. Override per event with `[FB:theme=<key>]`, or
+  suppress with `[FB:theme=none]`. Add new themes by dropping a
+  themable SVG into `frontend/icons/events/`.
 - **Progress card celebration** — when a member's daily progress ring
   hits 100% the ring briefly pulses with a glow and a small confetti
   burst, drawing attention to the "all done" moment without adding any
   extra noise to the rest of the dashboard. Animation is suppressed
   for users with `prefers-reduced-motion: reduce`.
-
-### Fixed
-- Locked the per-member progress logic for shared chores with a new
-  test (`tests/test_progress.py`): completing a shared chore now has
-  guardrails ensuring it credits *every* member listed on the chore.
-  No code change — the existing fan-out already does this; the test
-  prevents future regressions.
-
-## [0.3.0] - 2026-05-02
-
-### Added
 - **Meal planning Phase 2.5** — AI-assisted dinner suggestion. New
   `meal_planner` config block (cuisines, pantry staples, restrictions,
   per-weekday overrides, optional shopping list target) drives a
@@ -95,6 +106,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   renders in its configured `trash[].color` straight from
   `configuration.yaml`. The default color was simplified to a single
   pastel grey (`#B8B8B8`); override per type via `trash[].color`.
+
+### Fixed
+- Locked the per-member progress logic for shared chores with a new
+  test (`tests/test_progress.py`): completing a shared chore now has
+  guardrails ensuring it credits *every* member listed on the chore.
+  No code change — the existing fan-out already does this; the test
+  prevents future regressions.
 
 ## [0.2.1] - 2026-04-29
 
