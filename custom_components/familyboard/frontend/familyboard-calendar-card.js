@@ -49,8 +49,8 @@ const VIEW_NL = {
 // Map stable select-state keys to internal view modes.
 const VIEW_FROM_SELECT = {
   today: "day",
-  tomorrow: "day",
-  today_tomorrow: "2days",
+  "2_days": "2days",
+  "3_days": "3days",
   week: "week",
   work_week: "workweek",
   two_weeks: "2weeks",
@@ -130,11 +130,15 @@ class FamilyBoardCalendarCard extends HTMLElement {
       config_entity: config.config_entity || "sensor.familyboard_members",
       reminders_entity: config.reminders_entity || null,
       reminders_hide_when: config.reminders_hide_when || null,
+      category_switches: Array.isArray(config.category_switches)
+        ? config.category_switches.slice()
+        : [],
       show_now_indicator: config.show_now_indicator !== false,
       show_navigation: config.show_navigation !== false,
       weather_entity: config.weather_entity || null,
       weather_show_low: config.weather_show_low === true,
       locale: config.locale || "nl",
+      event_images: config.event_images === true,
     };
     if (this._config.end_hour <= this._config.start_hour) {
       this._config.end_hour = this._config.start_hour + 1;
@@ -168,19 +172,27 @@ class FamilyBoardCalendarCard extends HTMLElement {
 
   _anchorCurrentStartFor(viewSelectState) {
     const today = this._startOfDay(new Date());
-    if (viewSelectState === "today" || viewSelectState === "today_tomorrow") {
+    if (
+      viewSelectState === "today" ||
+      viewSelectState === "2_days" ||
+      viewSelectState === "3_days"
+    ) {
       this._currentStart = today;
-    } else if (viewSelectState === "tomorrow") {
-      this._currentStart = this._addDays(today, 1);
     } else if (viewSelectState === "week" || viewSelectState === "two_weeks") {
       // snap to first weekday of current week (HA locale)
       const fw = this._firstWeekday();
       const dow = (today.getDay() - fw + 7) % 7;
       this._currentStart = this._addDays(today, -dow);
     } else if (viewSelectState === "work_week") {
-      // always snap to Monday of current week
-      const dow = (today.getDay() + 6) % 7; // Mon=0
-      this._currentStart = this._addDays(today, -dow);
+      // Mon-Fri: snap to Monday of this week. On weekends (Sat/Sun)
+      // anchor to today so the next 5 days are visible instead of an
+      // empty Sat/Sun tail of the week we already finished.
+      const day = today.getDay(); // 0=Sun..6=Sat
+      if (day === 0 || day === 6) {
+        this._currentStart = today;
+      } else {
+        this._currentStart = this._addDays(today, -(day - 1));
+      }
     } else if (viewSelectState === "month") {
       this._currentStart = new Date(today.getFullYear(), today.getMonth(), 1);
     }
@@ -275,6 +287,10 @@ class FamilyBoardCalendarCard extends HTMLElement {
       const s = hass.states[this._config.reminders_hide_when];
       parts.push(`rh:${s ? s.state : "x"}`);
     }
+    for (const sw of this._activeCategorySwitches()) {
+      const s = hass.states[sw];
+      parts.push(`cat:${sw}:${s ? s.state : "x"}`);
+    }
     if (this._config.reminders_entity) {
       const s = hass.states[this._config.reminders_entity];
       parts.push(`r:${s ? s.state + "|" + (s.last_changed || "") : "x"}`);
@@ -300,6 +316,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
           members: sc.members || [],
           name: sc.name,
           color: sc.color,
+          category: sc.category,
         };
       }
     }
@@ -413,6 +430,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
     let end;
     if (view === "day") end = this._addDays(start, 1);
     else if (view === "2days") end = this._addDays(start, 2);
+    else if (view === "3days") end = this._addDays(start, 3);
     else if (view === "workweek") end = this._addDays(start, 5);
     else if (view === "week") end = this._addDays(start, 7);
     else if (view === "2weeks") end = this._addDays(start, 14);
@@ -611,6 +629,65 @@ class FamilyBoardCalendarCard extends HTMLElement {
     return Array.from(byKey.values()).sort((a, b) => a.startDate - b.startDate);
   }
 
+  // Parse the `[FB:...;categories=a,b,c]` marker (if any) and return the
+  // event's set of categories. Falls back to ["personal"] when absent so
+  // legacy/uncategorized events stay visible by default.
+  _eventCategories(event) {
+    const m = (event.description || "").match(
+      /\[FB:[^\]]*?categories=([^;\]]+)/i,
+    );
+    if (m) {
+      return m[1].split(",").map((s) => s.trim()).filter(Boolean);
+    }
+    // No marker (e.g. event came straight from a shared calendar entity
+    // we fetched directly): if any source is a configured shared calendar
+    // with an explicit `category`, honor it. Otherwise default to
+    // "personal" so legacy / untagged events stay visible.
+    const sharedMap = this._effectiveSharedCalendars();
+    for (const src of event.sources || []) {
+      const cat = sharedMap[src]?.category;
+      if (cat) return [cat];
+    }
+    return ["personal"];
+  }
+
+  // Return true when the event has at least one currently-enabled category
+  // switch. With no category switches present, all events pass through.
+  _eventCategoryEnabled(event) {
+    const switches = this._activeCategorySwitches();
+    if (!switches.length || !this._hass) return true;
+    if (event.isReminder) return true;
+    const enabled = new Set();
+    for (const swid of switches) {
+      const s = this._hass.states[swid];
+      if (!s || s.state === "on") {
+        // Switch missing or on → that category is enabled. Derive the
+        // category key from the suffix after `familyboard_category_`.
+        const key = swid.replace(/^switch\.familyboard_category_/, "");
+        enabled.add(key);
+      }
+    }
+    const cats = this._eventCategories(event);
+    return cats.some((c) => enabled.has(c));
+  }
+
+  // Resolve the list of category switch entity_ids. If the user passes
+  // `category_switches:` in YAML, honor that exactly. Otherwise auto-
+  // discover every `switch.familyboard_category_*` currently in HA so
+  // dashboards work without bookkeeping.
+  _activeCategorySwitches() {
+    const explicit = this._config.category_switches || [];
+    if (explicit.length) return explicit;
+    if (!this._hass) return [];
+    return Object.keys(this._hass.states)
+      .filter((id) => id.startsWith("switch.familyboard_category_"))
+      .sort();
+  }
+
+  _filterByCategory(events) {
+    return events.filter((e) => this._eventCategoryEnabled(e));
+  }
+
   // ---------- styling ----------
 
   _eventBackground(event) {
@@ -618,6 +695,14 @@ class FamilyBoardCalendarCard extends HTMLElement {
     if (event.isReminder) {
       return event.color || "#888";
     }
+    // Trash events embed their per-type color in the description marker
+    // `[FB:trash=<type>;color=<hex>]`. Honor that so each trash type
+    // (rest / paper / gft / pmd) renders in its configured color
+    // straight from configuration.yaml.
+    const trashMatch = (event.description || "").match(
+      /\[FB:trash=[^;\]]+;color=(#[0-9a-f]{3,8})\]/i,
+    );
+    if (trashMatch) return trashMatch[1];
     // If event comes from a shared calendar, use member colors instead of source colors
     const sharedMap = this._effectiveSharedCalendars();
     let colors;
@@ -638,7 +723,103 @@ class FamilyBoardCalendarCard extends HTMLElement {
     const stops = colors
       .map((c, i) => `${c} ${i * step}% ${(i + 1) * step}%`)
       .join(", ");
-    return `linear-gradient(135deg, ${stops})`;
+    // 120deg is slightly less harsh than 135deg for multi-member splits.
+    return `linear-gradient(120deg, ${stops})`;
+  }
+
+  // Pick a foreground color (and matching text-shadow) that contrasts with
+  // the event background. Works on solid hex (#rgb / #rrggbb) and gradients
+  // — uses the first hex stop as a representative sample. Returns light
+  // text on dark backgrounds and dark text on pastel/light backgrounds so
+  // user-chosen palettes stay readable.
+  _textOn(bg) {
+    const m = String(bg || "").match(/#([0-9a-f]{6}|[0-9a-f]{3})\b/i);
+    if (!m) return { fg: "#ffffff", shadow: "0 1px 1px rgba(0,0,0,0.4)" };
+    let hex = m[1];
+    if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("");
+    const r = parseInt(hex.slice(0, 2), 16) / 255;
+    const g = parseInt(hex.slice(2, 4), 16) / 255;
+    const b = parseInt(hex.slice(4, 6), 16) / 255;
+    const lin = (v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+    const lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    if (lum > 0.55) {
+      return { fg: "#1a1f2e", shadow: "0 1px 1px rgba(255,255,255,0.55)" };
+    }
+    return { fg: "#ffffff", shadow: "0 1px 1px rgba(0,0,0,0.4)" };
+  }
+
+  // Returns the HTML for a decorative event illustration, or "".
+  // Renders a placeholder div whose contents are filled in by
+  // `_inflateDecorations()` after the body innerHTML is set. The SVG
+  // is inlined so its `currentColor` accents pick up the tile text
+  // color (the dark-grey/skin-tone parts stay as-is). Layouts:
+  //   * banner: full-bleed (height >= 120 px)
+  //   * corner: bottom-right 96x72 (height >= 56 px)
+  // Skipped on reminders, compact tiles and tiles < 56 px tall.
+  _eventDecoHtml(ev, height, compact) {
+    if (!this._config.event_images) return "";
+    if (ev.isReminder) return "";
+    if (compact) return "";
+    if (height < 56) return "";
+    const fb = (typeof window !== "undefined") && window.FamilyBoardEventTheme;
+    if (!fb || typeof fb.eventTheme !== "function") return "";
+    const theme = fb.eventTheme(ev.summary || "", ev.description || "");
+    if (!theme) return "";
+    const safe = String(theme).replace(/[^a-z0-9_-]/gi, "");
+    if (!safe) return "";
+    const cls = height >= 120 ? "fb-event-deco fb-banner" : "fb-event-deco fb-corner";
+    let style = "";
+    if (height < 120) {
+      // Scale the corner badge with the tile so it never crowds the
+      // title/time on short events. 4:3 aspect, ~10 px gutter on top.
+      const ch = Math.max(36, Math.min(72, height - 8));
+      const cw = Math.round(ch * 4 / 3);
+      style = ` style="width:${cw}px;height:${ch}px"`;
+    }
+    return `<div class="${cls}" data-fb-deco="${safe}"${style}></div>`;
+  }
+
+  // Walks decoration placeholders and injects the inlined SVG (so
+  // `currentColor` resolves against the tile's text color). Fetched
+  // SVGs are cached per-theme on the class.
+  _inflateDecorations() {
+    if (!this.shadowRoot) return;
+    const els = this.shadowRoot.querySelectorAll("[data-fb-deco]");
+    if (!els.length) return;
+    const cache = FamilyBoardCalendarCard._decoCache;
+    els.forEach((el) => {
+      const theme = el.dataset.fbDeco;
+      if (!theme || el.firstChild) return;
+      const cached = cache.get(theme);
+      if (cached) {
+        this._injectDeco(el, cached);
+        return;
+      }
+      if (cache.get("__pending_" + theme)) return;
+      cache.set("__pending_" + theme, true);
+      fetch(`/familyboard/icons/events/${theme}.svg?v=5`)
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((text) => {
+          cache.delete("__pending_" + theme);
+          if (!text) return;
+          cache.set(theme, text);
+          this.shadowRoot
+            .querySelectorAll(`[data-fb-deco="${theme}"]`)
+            .forEach((e) => this._injectDeco(e, text));
+        })
+        .catch(() => cache.delete("__pending_" + theme));
+    });
+  }
+
+  _injectDeco(el, svgText) {
+    // Anchor the figure to the bottom-right corner of the placeholder
+    // for both banner and corner variants.
+    const anchor = "xMaxYMax meet";
+    const patched = svgText.replace(
+      /<svg\b/,
+      `<svg preserveAspectRatio="${anchor}"`,
+    );
+    el.innerHTML = patched;
   }
 
   _formatTime(d) {
@@ -661,6 +842,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
       const step =
         view === "day" ? 1
         : view === "2days" ? 2
+        : view === "3days" ? 3
         : view === "workweek" ? 7
         : view === "week" ? 7
         : view === "2weeks" ? 14
@@ -682,6 +864,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
       const step =
         view === "day" ? 1
         : view === "2days" ? 2
+        : view === "3days" ? 3
         : view === "workweek" ? 7
         : view === "week" ? 7
         : view === "2weeks" ? 14
@@ -745,6 +928,8 @@ class FamilyBoardCalendarCard extends HTMLElement {
       body.innerHTML = this._renderTimeGrid(1);
     } else if (view === "2days") {
       body.innerHTML = this._renderTimeGrid(2);
+    } else if (view === "3days") {
+      body.innerHTML = this._renderTimeGrid(3);
     } else if (view === "workweek") {
       body.innerHTML = this._renderTimeGrid(5);
     } else if (view === "week") {
@@ -755,6 +940,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
       body.innerHTML = this._renderMonthGrid();
     }
     this._wireEventClicks();
+    this._inflateDecorations();
     this._scrollToHour();
   }
 
@@ -812,11 +998,25 @@ class FamilyBoardCalendarCard extends HTMLElement {
         grid-template-columns: 56px 1fr;
         position: relative;
         container-type: inline-size;
+        /* View-scoped event typography. Each cols-N class below tunes
+           --fb-event-font so text is as large as the column allows. */
+        --fb-event-font: 1.05em;
       }
-      .fb-grid.cols-2 { grid-template-columns: 56px repeat(2, 1fr); }
-      .fb-grid.cols-5 { grid-template-columns: 56px repeat(5, 1fr); }
-      .fb-grid.cols-7 { grid-template-columns: 56px repeat(7, 1fr); }
-      .fb-grid.cols-14 { grid-template-columns: 56px repeat(14, minmax(60px, 1fr)); overflow-x: auto; }
+      .fb-grid.cols-1  { --fb-event-font: 1.25em; }
+      .fb-grid.cols-2  { grid-template-columns: 56px repeat(2, 1fr);  --fb-event-font: 1.18em; }
+      .fb-grid.cols-3  { grid-template-columns: 56px repeat(3, 1fr);  --fb-event-font: 1.12em; }
+      .fb-grid.cols-5  { grid-template-columns: 56px repeat(5, 1fr);  --fb-event-font: 1.05em; }
+      .fb-grid.cols-7  { grid-template-columns: 56px repeat(7, 1fr);  --fb-event-font: 1.0em;  }
+      .fb-grid.cols-14 { grid-template-columns: 56px repeat(14, minmax(60px, 1fr)); overflow-x: auto; --fb-event-font: 0.92em; }
+      /* Tablet bump: a little extra size on the wall display. */
+      @media (min-width: 900px) {
+        .fb-grid.cols-1  { --fb-event-font: 1.35em; }
+        .fb-grid.cols-2  { --fb-event-font: 1.25em; }
+        .fb-grid.cols-3  { --fb-event-font: 1.18em; }
+        .fb-grid.cols-5  { --fb-event-font: 1.1em;  }
+        .fb-grid.cols-7  { --fb-event-font: 1.05em; }
+        .fb-grid.cols-14 { --fb-event-font: 0.96em; }
+      }
 
       .fb-day-headers {
         display: contents;
@@ -883,6 +1083,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
         min-height: 24px;
       }
       .fb-grid.cols-2 .fb-allday-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .fb-grid.cols-3 .fb-allday-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .fb-grid.cols-5 .fb-allday-row { grid-template-columns: repeat(5, minmax(0, 1fr)); }
       .fb-grid.cols-7 .fb-allday-row { grid-template-columns: repeat(7, minmax(0, 1fr)); }
       .fb-grid.cols-14 .fb-allday-row { grid-template-columns: repeat(14, minmax(60px, 1fr)); }
@@ -904,11 +1105,11 @@ class FamilyBoardCalendarCard extends HTMLElement {
       }
       .fb-allday-bar {
         margin: 0 2px;
-        padding: 0 6px;
-        font-size: 0.78em;
-        line-height: 18px;
-        height: 18px;
-        border-radius: 3px;
+        padding: 0 8px;
+        font-size: var(--fb-event-font, 0.9em);
+        line-height: 22px;
+        height: 22px;
+        border-radius: 9px;
         color: #fff;
         white-space: nowrap;
         overflow: hidden;
@@ -965,25 +1166,76 @@ class FamilyBoardCalendarCard extends HTMLElement {
         position: absolute;
         left: 2px;
         right: 2px;
-        border-radius: 4px;
-        border: 1px solid rgba(0,0,0,0.45);
+        border-radius: 8px;
+        border: 1px solid rgba(0,0,0,0.18);
         color: white;
-        padding: 2px 5px;
-        font-size: 0.78em;
-        line-height: 1.2;
+        padding: 3px 6px;
+        font-size: var(--fb-event-font, 0.9em);
+        line-height: 1.25;
         cursor: pointer;
         overflow: hidden;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.18);
         text-shadow: 0 1px 1px rgba(0,0,0,0.4);
         box-sizing: border-box;
       }
-      .fb-event .fb-ev-time { font-size: 0.85em; opacity: 0.95; }
+      /* Decorative event illustration. The inlined SVG paints each
+         color role through a CSS variable, so the host can re-theme
+         the figure to read against any member background. Defaults
+         below are tuned to pop on saturated mid-tones; override per
+         tile, per member, or globally via a HA theme. */
+      .fb-event-deco {
+        position: absolute;
+        pointer-events: none;
+        opacity: 0.85;
+        z-index: 0;
+        overflow: hidden;
+        --fb-deco-accent:   #2a9d8f;
+        --fb-deco-accent-2: #ffd166;
+        --fb-deco-dark:     #1d3557;
+        --fb-deco-grey:     #a8dadc;
+        --fb-deco-skin:     #f6c8a8;
+        --fb-deco-light:    #ffffff;
+      }
+      /* Per-theme tweaks where the default palette under-reads. */
+      .fb-event-deco[data-fb-deco="friends"] {
+        opacity: 1;
+        --fb-deco-accent-2: #ef476f;
+        --fb-deco-accent:   #ffd166;
+      }
+      /* Beer scene: bottle/glass go warm orange against blue tiles. */
+      .fb-event-deco[data-fb-deco="beer"] {
+        --fb-deco-accent:   #e76f51;
+        --fb-deco-accent-2: #ffd166;
+      }
+      /* Fishing scene: keep boat + rod in muted natural blue. */
+      .fb-event-deco[data-fb-deco="fishing"] {
+        --fb-deco-accent:   #457b9d;
+        --fb-deco-accent-2: #ffd166;
+      }
+      .fb-event-deco svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .fb-event-deco.fb-banner {
+        inset: 4px;
+      }
+      .fb-event-deco.fb-corner {
+        right: 6px;
+        bottom: 4px;
+        width: 96px;
+        height: 72px;
+      }
+      .fb-event > .fb-ev-time,
+      .fb-event > .fb-ev-title,
+      .fb-event > .fb-ev-line { position: relative; z-index: 1; }
+      .fb-event .fb-ev-time { font-size: 0.92em; opacity: 0.95; }
       .fb-event .fb-ev-title {
         font-weight: 500;
         overflow: hidden;
         text-overflow: ellipsis;
         display: -webkit-box;
-        -webkit-line-clamp: 2;
+        -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
       }
       .fb-event.fb-compact {
@@ -996,7 +1248,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        font-size: 0.78em;
+        font-size: var(--fb-event-font, 0.9em);
         width: 100%;
       }
       .fb-event.fb-compact .fb-ev-time {
@@ -1109,11 +1361,11 @@ class FamilyBoardCalendarCard extends HTMLElement {
       }
       .fb-mc-bar {
         margin: 0 2px;
-        padding: 0 5px;
-        font-size: 0.7em;
-        line-height: 16px;
-        height: 16px;
-        border-radius: 3px;
+        padding: 0 6px;
+        font-size: 0.85em;
+        line-height: 18px;
+        height: 18px;
+        border-radius: 6px;
         color: #fff;
         white-space: nowrap;
         overflow: hidden;
@@ -1173,34 +1425,34 @@ class FamilyBoardCalendarCard extends HTMLElement {
         display: flex;
         align-items: stretch;
         background: var(--fb-bg-alt);
-        border-radius: 4px;
+        border-radius: 10px;
         overflow: hidden;
         cursor: pointer;
-        min-height: 36px;
+        min-height: 40px;
       }
       .fb-list-event:hover { filter: brightness(1.1); }
       .fb-list-event-bar {
-        flex: 0 0 5px;
+        flex: 0 0 6px;
         align-self: stretch;
       }
       .fb-list-event-body {
         flex: 1;
         min-width: 0;
-        padding: 4px 8px;
+        padding: 6px 10px;
         display: flex;
         flex-direction: column;
         justify-content: center;
         gap: 2px;
       }
       .fb-list-event-time {
-        font-size: 0.72em;
-        opacity: 0.75;
-        line-height: 1.1;
+        font-size: 0.85em;
+        opacity: 0.8;
+        line-height: 1.15;
       }
       .fb-list-event-title {
-        font-size: 0.95em;
+        font-size: 1.0em;
         font-weight: 500;
-        line-height: 1.2;
+        line-height: 1.25;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -1250,9 +1502,10 @@ class FamilyBoardCalendarCard extends HTMLElement {
     if (view === "day") {
       return this._formatDate(start, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
     }
-    if (view === "2days" || view === "workweek" || view === "week" || view === "2weeks") {
+    if (view === "2days" || view === "3days" || view === "workweek" || view === "week" || view === "2weeks") {
       const len =
         view === "2days" ? 1
+        : view === "3days" ? 2
         : view === "workweek" ? 4
         : view === "week" ? 6
         : 13;
@@ -1277,7 +1530,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
 
     // Combine calendar events with reminder pseudo-events
     const reminderEvents = this._buildReminderEvents();
-    const allEvents = [...this._events, ...reminderEvents];
+    const allEvents = [...this._filterByCategory(this._events), ...reminderEvents];
 
     // Classify events into the all-day row vs the timed grid.
     // An event belongs to the all-day row if it is a true all-day event,
@@ -1379,7 +1632,9 @@ class FamilyBoardCalendarCard extends HTMLElement {
     const gridHeight = totalHours * hourHeight;
 
     const colsClass =
-      numDays === 2 ? " cols-2"
+      numDays === 1 ? " cols-1"
+      : numDays === 2 ? " cols-2"
+      : numDays === 3 ? " cols-3"
       : numDays === 5 ? " cols-5"
       : numDays === 7 ? " cols-7"
       : numDays === 14 ? " cols-14"
@@ -1452,16 +1707,18 @@ class FamilyBoardCalendarCard extends HTMLElement {
 
   _buildHourLabels(startHour, endHour, hourHeight, occupiedHours) {
     let html = "";
-    for (let h = startHour; h <= endHour; h++) {
+    // We label the *start* of each hour slot (07:00 marks the 7→8 slot,
+    // …, (endHour-1):00 marks the last slot). The closing edge
+    // (endHour) is intentionally not labeled — it's the bottom border
+    // of the grid and any label there would either get clipped or
+    // collide with the previous hour. The hour above already conveys
+    // position.
+    for (let h = startHour; h < endHour; h++) {
       // Smart-skip startHour label if no event overlaps it (avoids visual clash with all-day row)
       if (h === startHour && occupiedHours && !occupiedHours.has(h)) continue;
-      // Smart-skip endHour label too if no event overlaps the previous hour
-      if (h === endHour && occupiedHours && !occupiedHours.has(h - 1)) continue;
       const top = (h - startHour) * hourHeight;
-      let translate = "translateY(2px)";
-      if (h === endHour) translate = "translateY(-100%)";
-      const label = h === 24 ? "24:00" : `${String(h).padStart(2, "0")}:00`;
-      html += `<div class="fb-hour-label" style="position:absolute;top:${top}px;right:4px;transform:${translate};">${label}</div>`;
+      const label = `${String(h).padStart(2, "0")}:00`;
+      html += `<div class="fb-hour-label" style="position:absolute;top:${top}px;right:4px;transform:translateY(2px);">${label}</div>`;
     }
     return html;
   }
@@ -1523,7 +1780,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
 
     // Combine calendar events with reminder pseudo-events
     const reminderEvents = this._buildReminderEvents();
-    const allEvents = [...this._events, ...reminderEvents];
+    const allEvents = [...this._filterByCategory(this._events), ...reminderEvents];
 
     // Weekday header row, starting at firstWeekday
     let dowHeader = "";
@@ -1638,6 +1895,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
   _renderMonthBar(seg, weekStart) {
     const ev = seg.ev;
     const bg = this._eventBackground(ev);
+    const { fg, shadow } = this._textOn(bg);
     const reminderCls = ev.isReminder ? " fb-reminder" : "";
     const dataAttr = ev.isReminder
       ? `data-todo="${this._escape(ev.todoEntity || "")}" data-uid="${this._escape(ev.uid || "")}"`
@@ -1656,7 +1914,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
     const arrowL = seg.isContPrev ? "‹ " : "";
     const arrowR = seg.isContNext ? " ›" : "";
     return `<span class="fb-mc-bar${reminderCls} ${contClasses}" ${dataAttr}
-      style="grid-column:${seg.startDow + 1} / span ${seg.span}; grid-row:${seg.slot + 2}; background:${bg};"
+      style="grid-column:${seg.startDow + 1} / span ${seg.span}; grid-row:${seg.slot + 2}; background:${bg};color:${fg};text-shadow:${shadow};"
       title="${this._escape(ev.summary || "")}">${arrowL}${prefix}${this._escape(ev.summary || "(geen titel)")}${arrowR}</span>`;
   }
 
@@ -1674,7 +1932,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
     const skipEmpty = view === "month" || days.length > 14;
 
     const reminders = this._buildReminderEvents();
-    const allEvents = [...this._events, ...reminders];
+    const allEvents = [...this._filterByCategory(this._events), ...reminders];
 
     let html = `<div class="fb-list">`;
     let rendered = 0;
@@ -1849,6 +2107,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
     const cls = `fb-event${clippedTop ? " fb-clipped-top" : ""}${clippedBot ? " fb-clipped-bot" : ""}${reminderCls}${compactCls}`;
 
     const bg = this._eventBackground(ev);
+    const { fg, shadow } = this._textOn(bg);
     const time = ev.allDay ? "" : `${this._formatTime(ev.startDate)}`;
     const titlePrefix = ev.isReminder ? "🔔 " : "";
     const title = titlePrefix + this._escape(ev.summary || "(geen titel)");
@@ -1860,11 +2119,15 @@ class FamilyBoardCalendarCard extends HTMLElement {
       ? `<div class=\"fb-ev-line\"><span class=\"fb-ev-time\">${time}</span> <span class=\"fb-ev-title\">${title}</span></div>`
       : `<div class=\"fb-ev-time\">${time}</div><div class=\"fb-ev-title\">${title}</div>`;
 
+    // Decorative line-art overlay (opt-in, skipped for reminders, short
+    // bars, and compact tiles).
+    const deco = this._eventDecoHtml(ev, height, compact);
+
     return `
       <div class="${cls}"
            ${dataAttr}
-           style="top:${top}px;height:${height}px;left:calc(${leftPct}% + 1px);width:calc(${widthPct}% - 4px);background:${bg};">
-        ${inner}
+           style="top:${top}px;height:${height}px;left:calc(${leftPct}% + 1px);width:calc(${widthPct}% - 4px);background:${bg};color:${fg};text-shadow:${shadow};">
+        ${deco}${inner}
       </div>
     `;
   }
@@ -1872,6 +2135,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
   _renderAllDayBar(seg) {
     const ev = seg.ev;
     const bg = this._eventBackground(ev);
+    const { fg, shadow } = this._textOn(bg);
     const reminderCls = ev.isReminder ? " fb-reminder" : "";
     const dataAttr = ev.isReminder
       ? `data-todo="${this._escape(ev.todoEntity || "")}" data-uid="${this._escape(ev.uid || "")}"`
@@ -1886,7 +2150,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
     const arrowL = seg.isContPrev ? "‹ " : "";
     const arrowR = seg.isContNext ? " ›" : "";
     return `<span class="fb-allday-bar${reminderCls} ${contClasses}" ${dataAttr}
-      style="grid-column:${seg.startCol + 1} / span ${seg.span}; grid-row:${seg.slot + 1}; background:${bg};"
+      style="grid-column:${seg.startCol + 1} / span ${seg.span}; grid-row:${seg.slot + 1}; background:${bg};color:${fg};text-shadow:${shadow};"
       title="${this._escape(ev.summary || "")}">${arrowL}${prefix}${this._escape(ev.summary || "(geen titel)")}${arrowR}</span>`;
   }
 
@@ -1979,6 +2243,7 @@ const CALENDAR_EDITOR_SCHEMA = [
   },
   { name: "row_height", selector: { number: { min: 12, max: 80, mode: "box" } } },
   { name: "locale", selector: { text: {} } },
+  { name: "event_images", selector: { boolean: {} } },
 ];
 
 class FamilyBoardCalendarCardEditor extends HTMLElement {
@@ -2021,6 +2286,10 @@ class FamilyBoardCalendarCardEditor extends HTMLElement {
     this._form.data = this._config;
   }
 }
+
+// Class-level cache of inlined decoration SVG text, keyed by theme
+// name. Pending fetches are tracked under "__pending_<theme>".
+FamilyBoardCalendarCard._decoCache = new Map();
 
 customElements.define("familyboard-calendar-card-editor", FamilyBoardCalendarCardEditor);
 customElements.define("familyboard-calendar-card", FamilyBoardCalendarCard);

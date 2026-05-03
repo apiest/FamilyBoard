@@ -8,6 +8,38 @@ DOMAIN = "familyboard"
 SCAN_INTERVAL_MINUTES = 5
 TASK_IDENTIFIER = "tasks.google.com"
 
+# Config-entry version. Bumped to 2 in v0.4.0 when list-shaped config
+# (members, trash, shared_*, meal_planner.day_overrides) was migrated
+# into HA subentries — see ``async_migrate_entry``.
+CONFIG_ENTRY_VERSION = 2
+
+# Subentry types managed via the integration page.
+SUBENTRY_MEMBER = "member"
+SUBENTRY_EXTRA_CALENDAR = "extra_calendar"
+SUBENTRY_SHARED_CALENDAR = "shared_calendar"
+SUBENTRY_SHARED_CHORE = "shared_chore"
+SUBENTRY_TRASH = "trash"
+SUBENTRY_MEAL_PLANNER = "meal_planner"
+SUBENTRY_MEAL_DAY_OVERRIDE = "meal_day_override"
+SUBENTRY_TYPES: tuple[str, ...] = (
+    SUBENTRY_MEMBER,
+    SUBENTRY_EXTRA_CALENDAR,
+    SUBENTRY_SHARED_CALENDAR,
+    SUBENTRY_SHARED_CHORE,
+    SUBENTRY_TRASH,
+    SUBENTRY_MEAL_PLANNER,
+    SUBENTRY_MEAL_DAY_OVERRIDE,
+)
+WEEKDAYS: tuple[str, ...] = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+
 # Shared device for all FamilyBoard entities
 DEVICE_IDENTIFIER = (DOMAIN, "familyboard_main")
 DEVICE_NAME = "FamilyBoard"
@@ -61,23 +93,44 @@ SNOOZE_MAX_MIN = 240
 # come from translations (entity.select.<key>.state.<key>).
 VIEW_OPTIONS = [
     "today",
-    "tomorrow",
-    "today_tomorrow",
-    "week",
+    "2_days",
+    "3_days",
     "work_week",
+    "week",
     "two_weeks",
     "month",
 ]
 LAYOUT_OPTIONS = ["list", "agenda"]
 ALLES = "Alles"
+
+# Calendar category enum. Stable, language-neutral keys; user-visible
+# labels live in translations (entity.select.calendar_category.state.<key>).
+CALENDAR_CATEGORIES: tuple[str, ...] = (
+    "personal",
+    "work",
+    "school",
+    "hobby",
+    "family",
+    "other",
+)
+DEFAULT_CALENDAR_CATEGORY = "personal"
+# Shared calendars are conceptually personal too — they default to the same
+# category so toggling "Personal" off behaves consistently for events from
+# either source. Users can still tag a shared calendar with an explicit
+# `category:` in YAML to opt it into a different filter chip.
+DEFAULT_SHARED_CALENDAR_CATEGORY = DEFAULT_CALENDAR_CATEGORY
+CATEGORY_FILTER_ENTITY = "select.familyboard_calendar_category"
 # Legacy Dutch state values from earlier releases — restored states are mapped
 # into the new keys to avoid breaking existing installs.
 LEGACY_VIEW_STATE_MAP: dict[str, str] = {
     "Vandaag": "today",
-    "Morgen": "tomorrow",
+    "Morgen": "today",
+    "Vandaag + Morgen": "2_days",
     "Week": "week",
     "2 Weken": "two_weeks",
     "Maand": "month",
+    "tomorrow": "today",
+    "today_tomorrow": "2_days",
 }
 LEGACY_LAYOUT_STATE_MAP: dict[str, str] = {
     "Lijst": "list",
@@ -106,3 +159,39 @@ MEAL_PENALTY_ANCHORS: tuple[tuple[int, float], ...] = (
     (14, 1.0),
     (30, 0.0),
 )
+
+# Phase 2.5: AI-assisted meal suggestion
+MEAL_SUGGESTION_ENTITY = "sensor.familyboard_meal_suggestion"
+MEAL_SUGGESTION_STORAGE_KEY = "familyboard_meal_suggestion"
+MEAL_SUGGESTION_STORAGE_VERSION = 1
+MEAL_SUGGESTION_PLACEHOLDER = "Geen suggestie"
+# Bucket thresholds used by the prompt builder when classifying recent meals.
+MEAL_AVOID_DAYS = 14  # days_since < this → "recently eaten, do not suggest"
+MEAL_FAVORITE_DAYS = 21  # days_since >= this → "forgotten favorite, inspire"
+DEFAULT_MEAL_MAX_MINUTES = 30
+DEFAULT_MEAL_CUISINES: tuple[str, ...] = (
+    "Nederlands",
+    "Italiaans",
+    "Mexicaans",
+    "Aziatisch",
+    "Mediterraans",
+    "Midden-Oosters",
+)
+DEFAULT_MEAL_PANTRY: tuple[str, ...] = (
+    "zout",
+    "peper",
+    "olie",
+    "boter",
+    "ui",
+    "knoflook",
+    "kruiden",
+    "melk",
+    "eieren",
+    "rijst",
+    "pasta",
+    "sojasaus",
+    "ketjap",
+    "tomatenblik",
+    "bouillonblokjes",
+)
+DEFAULT_MEAL_RESTRICTIONS: tuple[str, ...] = ()

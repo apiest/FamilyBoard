@@ -26,12 +26,14 @@ from homeassistant.helpers import (
     device_registry as dr,
     entity_registry as er,
 )
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
 from .const import (
+    CONFIG_ENTRY_VERSION,
     DAY_END_ENTITY,
     DAY_START_ENTITY,
     DEVICE_IDENTIFIER,
@@ -47,13 +49,21 @@ from .const import (
     EVENT_TITLE_ENTITY,
     MEAL_LOOKAHEAD_DAYS,
     MEAL_RECENT_WINDOW_DAYS,
+    MEAL_SUGGESTION_STORAGE_KEY,
+    MEAL_SUGGESTION_STORAGE_VERSION,
     SCAN_INTERVAL_MINUTES,
     TASK_IDENTIFIER,
     VIEW_ENTITY,
 )
-from .helpers import is_meal_placeholder, member_calendar_entities, score_recent_meals
+from .helpers import (
+    build_meal_prompt,
+    is_meal_placeholder,
+    member_calendar_entities,
+    score_recent_meals,
+)
 from .reminder import ReminderManager
 from .schemas import OPTIONS_SCHEMA, default_options
+from .subentries import compose_conf, migrate_options_to_subentries
 from .trash import TrashChoreManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -70,9 +80,11 @@ PLATFORMS: list[Platform] = [
 
 # (resource_id, filename) — registered as Lovelace module resources
 _FRONTEND_RESOURCES: list[tuple[str, str]] = [
+    ("familyboard_event_themes", "event-themes.js"),
     ("familyboard_card", "familyboard-chores-card.js"),
     ("familyboard_filter_card", "familyboard-filter-card.js"),
     ("familyboard_view_card", "familyboard-view-card.js"),
+    ("familyboard_category_card", "familyboard-category-card.js"),
     ("familyboard_calendar_card", "familyboard-calendar-card.js"),
     ("familyboard_progress_card", "familyboard-progress-card.js"),
     ("familyboard_countdown_card", "familyboard-countdown-card.js"),
@@ -92,6 +104,11 @@ ADD_EVENT_SCHEMA = vol.Schema({})
 ADD_MEAL_SCHEMA = vol.Schema({})
 SNOOZE_TEST_SCHEMA = vol.Schema({vol.Required("uid"): cv.string})
 CANCEL_REMINDER_SCHEMA = vol.Schema({vol.Required("uid"): cv.string})
+SUGGEST_MEAL_SCHEMA = vol.Schema(
+    {vol.Optional("date"): cv.date, vol.Optional("ai_task_entity"): cv.entity_id}
+)
+ACCEPT_MEAL_SUGGESTION_SCHEMA = vol.Schema({})
+CLEAR_MEAL_SUGGESTION_SCHEMA = vol.Schema({})
 
 
 # ---------------------------------------------------------------------------
@@ -121,20 +138,73 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload the integration when options change."""
+    """Reload the integration when options or subentries change."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate a v1 entry (list-shaped options) into v2 subentries.
+
+    For each member / extra calendar / shared calendar / shared chore /
+    trash sensor / meal planner / day override in the legacy options
+    dict we synthesize a matching subentry with a stable ``unique_id``.
+    The migration is idempotent: subentries with a matching
+    ``(subentry_type, unique_id)`` are left alone, so re-running is
+    safe. After migration the legacy lists are stripped from
+    ``entry.options`` so subentries become the single source of truth.
+    """
+    if entry.version >= CONFIG_ENTRY_VERSION:
+        return True
+
+    options = dict(entry.options or {})
+    created = await migrate_options_to_subentries(hass, entry, options)
+    _LOGGER.info(
+        "FamilyBoard: migrated entry %s to v%d (%d subentries created)",
+        entry.entry_id,
+        CONFIG_ENTRY_VERSION,
+        created,
+    )
+
+    # Clear legacy list-shaped options so compose_conf is the only source.
+    cleaned = {
+        k: v
+        for k, v in options.items()
+        if k
+        not in {
+            "members",
+            "trash",
+            "shared_calendars",
+            "shared_chores",
+            "meal_calendar",
+            "meal_planner",
+        }
+    }
+    hass.config_entries.async_update_entry(
+        entry, options=cleaned, version=CONFIG_ENTRY_VERSION
+    )
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up FamilyBoard from a config entry."""
     fb = hass.data.setdefault(DOMAIN, {})
 
-    # Prefer entry.options; fall back to YAML for legacy installs that haven't
-    # been re-imported yet.
-    if entry.options:
-        conf = dict(entry.options)
-    else:
-        conf = fb.get("yaml_config") or default_options()
+    # If async_step_import created this entry just now, upsert the YAML
+    # block into subentries before composing conf.
+    pending_yaml = fb.pop("pending_yaml_import", None)
+    if pending_yaml:
+        from .subentries import upsert_yaml as _upsert_yaml
+
+        await _upsert_yaml(hass, entry, pending_yaml)
+
+    # v2: rebuild conf from subentries. Fall back to legacy options /
+    # YAML for the brief window after install before any subentry
+    # exists (e.g. user just clicked "Add integration" but hasn't added
+    # a member yet).
+    conf = compose_conf(entry)
+    if not conf.get("members") and not entry.subentries:
+        legacy = dict(entry.options) if entry.options else None
+        conf = legacy or fb.get("yaml_config") or default_options()
 
     # Make sure required keys exist
     for key in ("members", "trash", "shared_calendars", "shared_chores"):
@@ -191,6 +261,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await _async_link_entities(hass, entry)
         await reminder_manager.async_start()
         await trash_chore_manager.async_start()
+        await coordinator.async_load_meal_suggestion()
         await coordinator.async_refresh()
         await _async_check_lovelace_dependencies(hass)
 
@@ -563,6 +634,172 @@ def _async_register_services(hass: HomeAssistant, conf: dict) -> None:
         uid = call.data["uid"]
         await manager.async_cancel(uid)
 
+    async def handle_suggest_meal(call: ServiceCall) -> None:
+        """Generate a meal suggestion via ``ai_task.generate_data``.
+
+        Uses the ``meal_planner`` options block for prompt configuration.
+        ``date`` defaults to today; ``ai_task_entity`` overrides the
+        configured one (one-shot, not persisted). Result is stored on the
+        coordinator and exposed via ``sensor.familyboard_meal_suggestion``.
+        """
+        planner = hass.data[DOMAIN]["config"].get("meal_planner") or {}
+        ai_entity = call.data.get("ai_task_entity") or planner.get("ai_task_entity")
+        if not ai_entity:
+            raise HomeAssistantError(
+                "Maaltijdplanner is niet geconfigureerd. Stel een AI-task "
+                "entiteit in via Instellingen \u2192 Apparaten \u2192 "
+                "FamilyBoard \u2192 Configureren \u2192 Maaltijdplanner (AI)."
+            )
+        if hass.states.get(ai_entity) is None:
+            raise HomeAssistantError(
+                f"AI-task entiteit '{ai_entity}' bestaat niet. Controleer "
+                "Instellingen \u2192 Apparaten \u2192 FamilyBoard \u2192 "
+                "Configureren \u2192 Maaltijdplanner (AI)."
+            )
+        target_date = call.data.get("date") or dt_util.now().date()
+
+        recent_items: list[dict] = []
+        week: list[dict] = []
+        coordinator: FamilyBoardCoordinator | None = hass.data.get(DOMAIN, {}).get(
+            "coordinator"
+        )
+        if coordinator and coordinator.data:
+            recent_items = list(coordinator.data.get("recent_meals") or [])
+            meals_by_date: dict[str, dict] = {}
+            for meal in coordinator.data.get("meals") or []:
+                meals_by_date.setdefault(meal["date"], meal)
+            today = dt_util.now().date()
+            for offset in range(MEAL_LOOKAHEAD_DAYS):
+                day = today + timedelta(days=offset)
+                iso = day.isoformat()
+                week.append(
+                    {
+                        "date": iso,
+                        "weekday": day.strftime("%A"),
+                        "meal": meals_by_date.get(iso),
+                    }
+                )
+
+        prompt = build_meal_prompt(
+            target_date,
+            planner=planner,
+            recent_items=recent_items,
+            week=week,
+        )
+
+        result = await hass.services.async_call(
+            "ai_task",
+            "generate_data",
+            {
+                "task_name": "FamilyBoard meal suggestion",
+                "entity_id": ai_entity,
+                "instructions": prompt,
+                "structure": {
+                    "title": {
+                        "description": "Naam van de maaltijd, max 4 woorden",
+                        "required": True,
+                        "selector": {"text": {}},
+                    },
+                    "reason": {
+                        "description": (
+                            "Korte reden (1 zin) waarom dit een goede keuze is"
+                        ),
+                        "required": True,
+                        "selector": {"text": {}},
+                    },
+                    "ingredients": {
+                        "description": (
+                            "Boodschappen, alleen losse strings, geen hoeveelheden"
+                        ),
+                        "required": True,
+                        "selector": {"text": {"multiple": True}},
+                    },
+                },
+            },
+            blocking=True,
+            return_response=True,
+        )
+
+        data = (result or {}).get("data") if isinstance(result, dict) else None
+        if not isinstance(data, dict):
+            raise HomeAssistantError(
+                f"ai_task.generate_data returned unexpected payload: {result!r}"
+            )
+
+        suggestion = {
+            "date": target_date.isoformat(),
+            "title": str(data.get("title") or "").strip(),
+            "reason": str(data.get("reason") or "").strip(),
+            "ingredients": [
+                str(i).strip()
+                for i in (data.get("ingredients") or [])
+                if str(i).strip()
+            ],
+            "generated_at": dt_util.utcnow().isoformat(),
+        }
+        if coordinator is not None:
+            await coordinator.async_set_meal_suggestion(suggestion)
+
+    async def handle_accept_meal_suggestion(call: ServiceCall) -> None:
+        """Apply the stored suggestion: create meal event + shopping items."""
+        coordinator: FamilyBoardCoordinator | None = hass.data.get(DOMAIN, {}).get(
+            "coordinator"
+        )
+        suggestion = coordinator.meal_suggestion if coordinator else None
+        if not suggestion or not suggestion.get("title"):
+            raise HomeAssistantError(
+                "Geen actieve maaltijdsuggestie. Tik eerst op Vandaag, "
+                "Morgen of Overmorgen om er een te genereren."
+            )
+
+        meal_calendar = hass.data[DOMAIN]["config"].get("meal_calendar")
+        if not meal_calendar:
+            raise HomeAssistantError(
+                "meal_calendar is niet geconfigureerd. Stel deze in via "
+                "FamilyBoard \u2192 Configureren \u2192 Algemene instellingen."
+            )
+
+        try:
+            target = _dt.fromisoformat(suggestion["date"]).date()
+        except (KeyError, ValueError) as err:
+            raise HomeAssistantError(f"Invalid suggestion date: {err}") from err
+
+        await hass.services.async_call(
+            "calendar",
+            "create_event",
+            {
+                "summary": suggestion["title"],
+                "start_date": target.isoformat(),
+                "end_date": (target + timedelta(days=1)).isoformat(),
+            },
+            target={"entity_id": meal_calendar},
+            blocking=True,
+        )
+
+        planner = hass.data[DOMAIN]["config"].get("meal_planner") or {}
+        shopping_list = planner.get("shopping_list")
+        if shopping_list:
+            for item in suggestion.get("ingredients", []):
+                await hass.services.async_call(
+                    "todo",
+                    "add_item",
+                    {"item": item},
+                    target={"entity_id": shopping_list},
+                    blocking=True,
+                )
+
+        if coordinator is not None:
+            await coordinator.async_set_meal_suggestion(None)
+            await coordinator.async_request_refresh()
+
+    async def handle_clear_meal_suggestion(call: ServiceCall) -> None:
+        """Discard the current meal suggestion without acting on it."""
+        coordinator: FamilyBoardCoordinator | None = hass.data.get(DOMAIN, {}).get(
+            "coordinator"
+        )
+        if coordinator is not None:
+            await coordinator.async_set_meal_suggestion(None)
+
     hass.services.async_register(
         DOMAIN, "add_event", handle_add_event, schema=ADD_EVENT_SCHEMA
     )
@@ -574,6 +811,21 @@ def _async_register_services(hass: HomeAssistant, conf: dict) -> None:
     )
     hass.services.async_register(
         DOMAIN, "cancel_reminder", handle_cancel_reminder, schema=CANCEL_REMINDER_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "suggest_meal", handle_suggest_meal, schema=SUGGEST_MEAL_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "accept_meal_suggestion",
+        handle_accept_meal_suggestion,
+        schema=ACCEPT_MEAL_SUGGESTION_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "clear_meal_suggestion",
+        handle_clear_meal_suggestion,
+        schema=CLEAR_MEAL_SUGGESTION_SCHEMA,
     )
 
 
@@ -606,6 +858,27 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         self._prev_active_uids: dict[str, set[str]] = {}
         self._daily_completed: dict[str, int] = {}
         self._progress_date: str = ""
+        self._meal_suggestion_store: Store = Store(
+            hass, MEAL_SUGGESTION_STORAGE_VERSION, MEAL_SUGGESTION_STORAGE_KEY
+        )
+        self._meal_suggestion: dict | None = None
+
+    async def async_load_meal_suggestion(self) -> None:
+        """Load the persisted meal suggestion from disk (call before refresh)."""
+        data = await self._meal_suggestion_store.async_load()
+        if isinstance(data, dict) and data.get("title"):
+            self._meal_suggestion = data
+
+    async def async_set_meal_suggestion(self, suggestion: dict | None) -> None:
+        """Persist a new (or cleared) meal suggestion and refresh listeners."""
+        self._meal_suggestion = suggestion
+        await self._meal_suggestion_store.async_save(suggestion or {})
+        await self.async_request_refresh()
+
+    @property
+    def meal_suggestion(self) -> dict | None:
+        """Return the current persisted meal suggestion, if any."""
+        return self._meal_suggestion
 
     async def async_fetch_events(
         self, entity_id: str, start_iso: str, end_iso: str
@@ -662,10 +935,10 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         today = now.date()
         if view == "today":
             return (today.isoformat(), today.isoformat())
-        if view == "tomorrow":
+        if view == "2_days":
             return (today.isoformat(), (today + timedelta(days=1)).isoformat())
-        if view == "today_tomorrow":
-            return (today.isoformat(), (today + timedelta(days=1)).isoformat())
+        if view == "3_days":
+            return (today.isoformat(), (today + timedelta(days=2)).isoformat())
         if view == "week":
             return (today.isoformat(), (today + timedelta(days=7)).isoformat())
         if view == "work_week":
@@ -993,6 +1266,7 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
 
         result["meals"] = await self._fetch_meals(now)
         result["recent_meals"] = await self._fetch_recent_meals(now)
+        result["meal_suggestion"] = self._meal_suggestion
 
         return result
 

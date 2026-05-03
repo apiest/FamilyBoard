@@ -57,6 +57,7 @@ FamilyBoard doesn't ask my family to change how they function; it changes the en
 - **Per-member progress sensor** — daily completion tracking with color rings.
 - **Interactive snooze reminders** — actionable mobile_app notifications scheduled at task start time, with persistence across HA restarts and away-aware delivery.
 - **Custom Lovelace cards** — composable building blocks: `chores`, `calendar`, `filter`, `progress`, `countdown`. Each takes its own config; users can mix them into any dashboard.
+- **Calendar category filter** — tag each calendar with a category (`personal`, `work`, `school`, `hobby`, `family`, `shared`, `other`); the dashboard renders one toggle chip per category in use, so you can hide the work calendar with one tap. Toggle state survives restarts.
 - **Add-event form entities** — built-in `select`, `text`, `switch` and `datetime` entities power a "create event" form with cascading member → calendar pickers.
 - **Event countdown** — kiosk-editable countdown to a single target date (label + date), rendered by `custom:familyboard-countdown-card`. Auto-hides when no label is set and self-clears the day after the event.
 
@@ -83,13 +84,52 @@ resources API — no manual URL bookkeeping required.
 ### YAML alternative
 
 YAML configuration is still supported as a bootstrap: any `familyboard:`
-block in `configuration.yaml` is imported into the config entry on first
-start and refreshed on subsequent restarts. Edits made through the
-options flow take precedence until the YAML changes again.
+block in `configuration.yaml` is imported into the integration on first
+start and **upserted** into sub-items on every subsequent restart.
+Sub-items you added via the UI without a YAML twin are preserved.
 
 ## Configuration
 
-### Full example
+FamilyBoard is configured entirely through the **integration page**:
+
+> Settings → Devices & Services → FamilyBoard → click the **➕** in the
+> *Sub-items* section.
+
+Each member, extra calendar, shared calendar, shared chore, trash
+sensor and the meal planner is its own **sub-item** (HA *subentry*).
+Add or remove them individually from that page; each appears as a
+separate row with edit / delete controls.
+
+Available sub-item types:
+
+| Sub-item | Cardinality | Description |
+|----------|-------------|-------------|
+| Member | 0..N | A person — primary calendar, color, optional `person`/notify, chore lists. |
+| Extra calendar | 0..N (linked to a member) | Additional calendar for an existing member. |
+| Shared calendar | 0..N | A calendar shared by multiple members. |
+| Shared chore | 0..N | A todo list shared by multiple members. |
+| Trash collection | 0..N (one per type) | A `sensor.*` with the next collection date as state. |
+| Meal planner | 0..1 | Singleton — meal calendar + AI suggestion settings. |
+| Meal weekday override | 0..7 (one per weekday) | Tweak the AI meal prompt for one specific weekday (e.g. "Thursday: training at 6pm — keep it quick"). Optionally overrides the planner's default max prep time for that day. |
+
+> The picker hides *Meal planner* once one exists and *Meal weekday
+> override* once all seven weekdays are covered.
+
+> **Trash auto-chores are now opt-in for new entries.** When you add a
+> trash sub-item via the UI, both *empty bins* and *kliko at the
+> curb* reminder chores default to **off**. Tick the boxes you want
+> created. Existing YAML / migrated v1 entries keep the legacy
+> default-on behaviour.
+
+### YAML alternative (still supported)
+
+YAML is still imported on every HA start as a bootstrap; each item is
+upserted into the matching sub-item by stable identity (member name,
+calendar entity, trash type, …). Sub-items added via the UI without a
+YAML twin are preserved across re-imports. Removing an item from YAML
+does **not** auto-delete the matching sub-item — clean up via the UI.
+
+### Full YAML example
 
 ```yaml
 familyboard:
@@ -138,7 +178,23 @@ familyboard:
     - entity: todo.groceries
       members: [Person_1, Person_2]
       name: Groceries
-  meal_calendar: calendar.meals
+  meals:
+    calendar: calendar.meals
+    ai_task_entity: ai_task.gpt_oss_20b   # required for suggest_meal
+    shopping_list: todo.groceries         # optional; ingredients land here on accept
+    cuisines: [Nederlands, Italiaans, Mexicaans, Aziatisch, Mediterraans]
+    pantry_staples: [zout, peper, olie, boter, ui, knoflook, kruiden,
+                     melk, eieren, rijst, pasta, sojasaus, ketjap,
+                     tomatenblik, bouillonblokjes]
+    restrictions:
+      - "Geen paprika"
+      - "Geen vis"
+    max_minutes: 30
+    day_overrides:
+      thursday:
+        note: "Training om 18:00 — kies iets heel makkelijks"
+        max_minutes: 15
+    extra_notes: ""
 ```
 
 ### Member options
@@ -150,11 +206,27 @@ familyboard:
 | `calendar_label` | no | `<name> privé` | Label shown in calendar picker |
 | `calendar_default_summary` | no | — | Fallback summary for events without one |
 | `calendar_default_description` | no | — | Fallback description for events without one |
-| `color` | no | `#4A90D9` | Member color (hex) |
+| `color` | no | `#4A90D9` | Member color (hex). See *Recommended palette* below. |
 | `person` | no | — | `person.*` entity for presence + avatar |
 | `notify` | no | — | `mobile_app_*` notify target for reminders |
 | `chores` | no | `[]` | List of `todo.*` entity_ids |
 | `extra_calendars` | no | `[]` | Additional calendars (see below) |
+| `category` | no | `personal` | Calendar category for the filter chips. One of `personal`, `work`, `school`, `hobby`, `family`, `shared`, `other`. |
+
+#### Recommended palette
+
+The dashboard auto-picks dark or light text per event, so any color works,
+but a softer pastel palette is friendlier on a wall-mounted tablet. All
+three pass WCAG AA contrast against the auto-picked dark text:
+
+| Member | Hex |
+|--------|-----|
+| Blue | `#A8C8EC` |
+| Green | `#B5E0C2` |
+| Pink | `#F4C2D7` |
+
+If you prefer the original saturated palette (`#4A90D9`, `#27AE60`,
+`#F39C12`, …) just leave `color:` as-is — text will stay white on those.
 
 ### Extra calendar options
 
@@ -164,6 +236,7 @@ familyboard:
 | `label` | yes | — | Display label in pickers |
 | `default_summary` | no | — | Fallback summary |
 | `default_description` | no | — | Fallback description |
+| `category` | no | parent member's category | Calendar category for the filter chips (see *Member options*). |
 
 ### Trash options
 
@@ -172,8 +245,10 @@ familyboard:
 | `type` | yes | — | Trash type identifier (`rest`, `paper`, `gft`, `pmd`, …) |
 | `sensor` | yes | — | Sensor entity with the next collection date as state |
 | `label` | no | from sensor | Display label |
-| `color` | no | per-type default | Color (hex) |
+| `color` | no | `#B8B8B8` | Color (hex) |
 | `emoji` | no | per-type default | Emoji prefix |
+| `reminder_bins` | no | `true` (YAML) / `false` (UI) | When `false`, skip the auto-created "prullenbakken legen" chore (evening before collection). UI-added trash items default to `false`; YAML keeps the legacy default-on behaviour. |
+| `reminder_kliko` | no | `true` (YAML) / `false` (UI) | When `false`, skip the auto-created "kliko aan de weg" chore (morning of collection). UI-added trash items default to `false`; YAML keeps the legacy default-on behaviour. |
 
 ### Shared calendar options
 
@@ -183,6 +258,7 @@ familyboard:
 | `members` | yes | — | List of member names |
 | `name` | no | — | Display name |
 | `color` | no | — | Color (hex) |
+| `category` | no | `shared` | Calendar category for the filter chips (see *Member options*). |
 
 ### Shared chore options
 
@@ -193,6 +269,29 @@ familyboard:
 | `type` | no | — | `trash` enables auto-creation from configured trash sensors |
 | `name` | no | — | Display name |
 | `color` | no | — | Color (hex) |
+
+### Meals (`meals`)
+
+Drives the AI dinner-suggestion service
+(`familyboard.suggest_meal`) and the meal calendar. All keys except
+`ai_task_entity` are optional; defaults are baked in.
+
+| Key | Required | Default | Description |
+|-----|----------|---------|-------------|
+| `calendar` | no | — | `calendar.*` entity that holds the meal events |
+| `ai_task_entity` | yes | — | `ai_task.*` entity that backs `ai_task.generate_data` |
+| `shopping_list` | no | — | `todo.*` entity ingredients are appended to on accept |
+| `cuisines` | no | NL/IT/MX/Asian/Med/ME | List of cuisines for variation hints. **User list replaces the default fully when set.** |
+| `pantry_staples` | no | sensible NL kitchen list | Items the model should NOT add to the shopping list. **User list replaces the default fully when set.** |
+| `restrictions` | no | `[]` | Hard rules ("Geen paprika", "Geen vis", …) |
+| `max_minutes` | no | `30` | Maximum total prep time hint |
+| `day_overrides` | no | `{}` | Per-weekday tweaks. Keys are lowercase English weekday names. Each entry may set `note` and/or `max_minutes`. |
+| `extra_notes` | no | `""` | Free-form text appended at the end of the prompt |
+
+> **Deprecated:** the legacy top-level `meal_calendar:` and
+> `meal_planner:` keys are still accepted but emit a deprecation
+> warning. Migrate to a single `meals:` block (with `calendar:` nested
+> inside).
 
 ## Entities created
 
@@ -214,6 +313,7 @@ familyboard:
 | `sensor.familyboard_compliment` | Time-of-day greeting |
 | `sensor.familyboard_meals` | Tonight's meal + 7-day week strip (requires `meal_calendar`) |
 | `sensor.familyboard_recent_meals` | Top recent meal titles scored by usage and recency for the quick picker |
+| `sensor.familyboard_meal_suggestion` | Latest AI-generated dinner suggestion (state = title; attrs = `date`, `reason`, `ingredients`, `generated_at`) |
 | `binary_sensor.familyboard_meals_unplanned` | `on` when any of the next 7 days has no meal entry; placeholders count as planned |
 
 #### Meal placeholders
@@ -252,7 +352,7 @@ automation:
 | Entity | Description |
 |--------|-------------|
 | `select.familyboard_calendar` | Member/Alles filter chip |
-| `select.familyboard_view` | Time window (Vandaag/Morgen/Week/2 Weken/Maand) |
+| `select.familyboard_view` | Time window (Vandaag/2 Dagen/3 Dagen/Werkweek/Week/2 Weken/Maand) |
 | `select.familyboard_layout` | Layout mode (Lijst/Agenda) |
 | `select.familyboard_event_member` | Add-event: member picker |
 | `select.familyboard_event_calendar` | Add-event: calendar picker (cascades from member) |
@@ -281,8 +381,23 @@ layout, alongside core or third-party cards.
 |-----------|-----------------|-------------|
 | `custom:familyboard-chores-card` | `entity`, `filter_entity`, `view_entity`, `members_entity` | Sorted chore list with member filter |
 | `custom:familyboard-calendar-card` | `members_entity`, calendar entity_ids | Calendar timeline view |
-| `custom:familyboard-filter-card` | `filter_entity`, `members_entity` | Member filter chips |
-| `custom:familyboard-progress-card` | `entity` | Per-member progress rings |
+| `custom:familyboard-filter-card` | `filter_entity`, `members_entity` | Standalone member filter chips (alternative to the progress card's built-in filter) |
+| `custom:familyboard-progress-card` | `entity` | Per-member progress rings; with `selectable: true` + `filter_entity` the tiles double as the member filter |
+
+### Example progress card with built-in filter
+
+```yaml
+type: custom:familyboard-progress-card
+entity: sensor.familyboard_progress
+filter_entity: select.familyboard_calendar
+selectable: true
+```
+
+When `selectable: true` and `filter_entity` is set, each tile becomes a
+button that writes to the `select` entity. The selected member's tile gets
+a colored back-glow; when the filter is `Alles` (or unavailable) every tile
+glows. Clicking the sole-selected tile toggles back to `Alles`. Without
+`selectable` / `filter_entity` the card is purely a display.
 
 ### Example chores card
 
@@ -292,7 +407,84 @@ entity: sensor.familyboard_chores
 filter_entity: select.familyboard_calendar
 view_entity: select.familyboard_view
 members_entity: sensor.familyboard_members
+# Optional:
+#   member: Person_1     # bind card to one member (or 'shared' for the algemene list)
+#   show_shared: false   # hide shared chores from a personal/all view
+#   show_header: false   # hide the member/shared header
 ```
+
+Set `member: shared` to render only the shared ("algemene") chores; the
+`filter_entity` member chips and the `show_shared` toggle are ignored in that
+mode. The view filter (`view_entity`) still scopes the date window.
+
+### Event decorations
+
+The calendar card can blend a full-color illustration into a timed
+event tile, picked from the title. Illustrations are inlined as SVG
+and each color role (accent, dark, skin, …) is painted through a CSS
+custom property, so the host page can re-theme them per tile, per
+member or via a HA theme without editing the SVGs.
+
+Enable with `event_images: true` on the calendar card:
+
+```yaml
+type: custom:familyboard-calendar-card
+event_images: true
+# … other options
+```
+
+How matching works:
+
+- The title is lowercased, accents stripped, then split into tokens.
+- A built-in NL + EN keyword map routes the first matching token to a
+  theme key. 23 themes ship out of the box: `birthday`, `beer`,
+  `bbq`, `party`, `school`, `phone`, `work`, `badminton`, `fishing`,
+  `walking`, `hiking`, `outdoors`, `gym`, `doctor`, `food`, `camping`,
+  `travel`, `family`, `friends`, `shopping`, `cleaning`, `pet`,
+  `music`.
+- The theme picks an SVG from `frontend/icons/events/<key>.svg`. The
+  SVG is sourced from [unDraw](https://undraw.co/) and re-mapped so
+  every fill resolves to a `--fb-deco-*` CSS variable.
+- **No keyword match → no decoration.** The tile renders plainly.
+- Tile size decides the layout: ≥ 120 px tall gets a banner across
+  the tile; 56–120 px gets a corner badge at bottom-right that scales
+  with the tile (4:3, capped at 96×72); shorter or compact tiles
+  stay plain.
+- Reminders/chores skip the decoration entirely.
+
+Themable color roles (defaults shown):
+
+| Variable              | Default     | Used for                        |
+|-----------------------|-------------|---------------------------------|
+| `--fb-deco-accent`    | `#2a9d8f`   | primary accent (main object)    |
+| `--fb-deco-accent-2`  | `#ffd166`   | secondary accent / highlight    |
+| `--fb-deco-dark`      | `#1d3557`   | silhouettes, clothing, outlines |
+| `--fb-deco-grey`      | `#a8dadc`   | neutral background shapes       |
+| `--fb-deco-skin`      | `#f6c8a8`   | skin tones                      |
+| `--fb-deco-light`     | `#ffffff`   | light highlights                |
+
+A few themes ship with per-theme overrides where the defaults
+under-read (e.g. `friends`, `beer`, `fishing`). Override globally
+from your HA theme:
+
+```yaml
+familyboard:
+  card-mod-theme: familyboard
+  card-mod-root-yaml: |
+    .: |
+      familyboard-calendar-card { --fb-deco-accent: #ff0066; }
+```
+
+Per-event override marker (anywhere in the description):
+
+- `[FB:theme=<key>]` — force a specific theme.
+- `[FB:theme=none]` — suppress the decoration for one event even
+  when a keyword would have matched.
+
+To add a new theme, drop a themable SVG at
+`custom_components/familyboard/frontend/icons/events/<key>.svg` (use
+`var(--fb-deco-*, fallback)` for fills you want re-themable) and add
+the keyword to `event-themes.js`.
 
 ## Dashboard options
 
@@ -409,6 +601,10 @@ This project was developed with substantial help from AI coding assistants
 (GitHub Copilot / Claude). All code has been reviewed, tested against Home
 Assistant 2026.4.x and is maintained by a human — but if you spot a quirk that
 smells like an LLM hallucination, please open an issue.
+
+Built-in event-decoration scenes are based on illustrations from
+[unDraw](https://undraw.co/) (no attribution required by their license, but
+credit where credit is due).
 
 ## Support
 

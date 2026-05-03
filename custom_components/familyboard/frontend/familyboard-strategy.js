@@ -50,14 +50,6 @@ function _members(hass, entity) {
   return s.attributes.members;
 }
 
-function _filterCard(cfg) {
-  return {
-    type: "custom:familyboard-filter-card",
-    filter_entity: cfg.filter_entity,
-    members_entity: cfg.members_entity,
-  };
-}
-
 function _viewChips(cfg) {
   // Delegates label rendering + i18n to the dedicated view card.
   return {
@@ -89,6 +81,9 @@ function _layoutChips(cfg) {
 }
 
 function _filterCardSized(cfg) {
+  // Deprecated in the default dashboard — the progress card now exposes
+  // built-in filter chips (glow on the selected member). Kept here so a
+  // user override that explicitly invokes the helper still works.
   return {
     type: "custom:familyboard-filter-card",
     filter_entity: cfg.filter_entity,
@@ -96,6 +91,16 @@ function _filterCardSized(cfg) {
     show_alles: true,
     extra_chips: [],
     grid_options: { columns: 10, rows: 1 },
+  };
+}
+
+function _progressCardMain(cfg) {
+  return {
+    type: "custom:familyboard-progress-card",
+    entity: cfg.progress_entity,
+    filter_entity: cfg.filter_entity,
+    selectable: true,
+    grid_options: { columns: "full", rows: 2 },
   };
 }
 
@@ -129,7 +134,31 @@ function _actionChips() {
   };
 }
 
-function _agendaCard(cfg, members) {
+function _categoryChips(hass) {
+  if (!hass) return null;
+  const switches = Object.keys(hass.states || {})
+    .filter((id) => id.startsWith("switch.familyboard_category_"))
+    .sort();
+  if (switches.length < 2) return null;
+  return {
+    type: "custom:mushroom-chips-card",
+    alignment: "start",
+    grid_options: { columns: "full", rows: 1 },
+    chips: switches.map((swid) => ({
+      type: "entity",
+      entity: swid,
+      icon: "mdi:calendar-filter",
+      content_info: "name",
+      tap_action: {
+        action: "call-service",
+        service: "switch.toggle",
+        target: { entity_id: swid },
+      },
+    })),
+  };
+}
+
+function _agendaCard(cfg, members, hass) {
   const entities = members.map((m) => _calId(m.name));
   const colors = {};
   const names = {};
@@ -144,6 +173,14 @@ function _agendaCard(cfg, members) {
   entities.push("calendar.familyboard_trash");
   colors["calendar.familyboard_trash"] = "#888888";
   names["calendar.familyboard_trash"] = "Trash";
+  // Discover registered category switches so the calendar card can filter
+  // events by category. Switches are created server-side, one per
+  // calendar category actually in use (see switch.py).
+  const category_switches = hass
+    ? Object.keys(hass.states || {})
+        .filter((id) => id.startsWith("switch.familyboard_category_"))
+        .sort()
+    : [];
   return {
     type: "custom:familyboard-calendar-card",
     view: "day",
@@ -156,6 +193,7 @@ function _agendaCard(cfg, members) {
     view_entity: cfg.view_entity,
     reminders_entity: cfg.chores_entity,
     reminders_hide_when: cfg.reminders_switch,
+    category_switches,
     entities,
     colors,
     names,
@@ -320,12 +358,6 @@ function _sideStackSection(cfg) {
       date_entity: cfg.countdown_date_entity,
     });
   }
-  if (cfg.show_progress) {
-    stack.push({
-      type: "custom:familyboard-progress-card",
-      entity: cfg.progress_entity,
-    });
-  }
   if (cfg.show_chores) {
     stack.push({
       type: "conditional",
@@ -431,14 +463,15 @@ class FamilyBoardDashboardStrategy extends HTMLElement {
     const cfg = _resolveConfig(strategyConfig);
     const members = _members(hass, cfg.members_entity);
 
-    // Main section (column_span 3): chips + Agenda calendar
-    const mainCards = [
-      _filterCardSized(cfg),
-      _layoutChips(cfg),
-      _viewChips(cfg),
-      _actionChips(),
-    ];
-    if (cfg.show_calendar) mainCards.push(_agendaCard(cfg, members));
+    // Main section (column_span 3): progress (with filter glow) + chips + Agenda calendar
+    const mainCards = [];
+    if (cfg.show_progress) mainCards.push(_progressCardMain(cfg));
+    mainCards.push(_layoutChips(cfg));
+    mainCards.push(_viewChips(cfg));
+    mainCards.push(_actionChips());
+    const catChips = _categoryChips(hass);
+    if (catChips) mainCards.push(catChips);
+    if (cfg.show_calendar) mainCards.push(_agendaCard(cfg, members, hass));
     const mainSection = { type: "grid", column_span: 3, cards: mainCards };
 
     const sections = [mainSection, _sideStackSection(cfg)];

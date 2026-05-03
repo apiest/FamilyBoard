@@ -42,3 +42,37 @@ cancel_reminder:
       example: "RE5QaTNIeEhaLS1xQm83OA"
       selector:
         text:
+
+suggest_meal:
+  name: Suggest meal
+  description: >-
+    Generate a meal suggestion via ai_task.generate_data using the
+    configured meal_planner block. Stores the result on
+    sensor.familyboard_meal_suggestion.
+  fields:
+    date:
+      name: Target date
+      description: The date the meal is for. Defaults to today.
+      example: "2026-04-30"
+      selector:
+        date:
+    ai_task_entity:
+      name: AI task entity
+      description: >-
+        One-shot override of the configured ai_task_entity. Useful to
+        try a different model without changing options.
+      example: ai_task.gpt_oss_20b
+      selector:
+        entity:
+          domain: ai_task
+
+accept_meal_suggestion:
+  name: Accept meal suggestion
+  description: >-
+    Apply the stored suggestion: create an all-day event on the
+    configured meal_calendar for its date and append each ingredient to
+    the configured shopping_list (when set).
+
+clear_meal_suggestion:
+  name: Clear meal suggestion
+  description: Discard the current meal suggestion without acting on it.

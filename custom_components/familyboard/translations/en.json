@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "FamilyBoard",
-        "description": "FamilyBoard will be created as a singleton entry. After it is created, open it under Settings \u2192 Devices & Services \u2192 FamilyBoard \u2192 Configure to add members, trash collections and shared items."
+        "description": "FamilyBoard will be created as a singleton entry. After it is created, open it under Settings → Devices & Services → FamilyBoard → Configure to add members, trash collections and shared items."
       }
     },
     "abort": {
@@ -14,133 +14,210 @@
     "step": {
       "init": {
         "title": "FamilyBoard",
-        "description": "What do you want to configure?",
-        "menu_options": {
-          "members": "Members",
-          "trash": "Trash collections",
-          "shared_calendars": "Shared calendars",
-          "shared_chores": "Shared chores",
-          "general": "General settings",
-          "save": "Save and exit"
-        }
+        "description": "All FamilyBoard configuration is now organised as sub-items on this integration page. Click ➕ above to add a member, shared calendar, shared chore, trash collection, or the meal planner. There are no global options to set here."
+      }
+    }
+  },
+  "config_subentries": {
+    "member": {
+      "initiate_flow": {
+        "user": "Add member",
+        "reconfigure": "Reconfigure member"
       },
-      "members": {
-        "title": "Members",
-        "description": "Pick a member to edit, add a new one, or go back. ({count} configured)",
-        "data": {"action": "Action"}
-      },
-      "member_action": {
-        "title": "Member: {name}",
-        "data": {"action": "Action"}
-      },
-      "member_edit": {
-        "title": "Member details",
-        "data": {
-          "name": "Name",
-          "calendar": "Primary calendar",
-          "calendar_label": "Calendar label",
-          "calendar_default_summary": "Default summary",
-          "calendar_default_description": "Default description",
-          "color": "Color (hex)",
-          "person": "Person entity",
-          "notify": "Notify target (mobile_app_*)",
-          "chores": "Chore lists"
-        }
-      },
-      "member_extras": {
-        "title": "Extra calendars",
-        "data": {"action": "Action"}
-      },
-      "member_extra_edit": {
-        "title": "Extra calendar",
-        "data": {
-          "entity": "Calendar entity",
-          "label": "Label",
-          "default_summary": "Default summary",
-          "default_description": "Default description",
-          "__remove__": "Remove this entry"
-        }
-      },
-      "trash": {
-        "title": "Trash collections",
-        "data": {"action": "Action"}
-      },
-      "trash_edit": {
-        "title": "Trash collection",
-        "data": {
-          "type": "Type",
-          "sensor": "Sensor",
-          "label": "Label",
-          "color": "Color (hex)",
-          "emoji": "Emoji",
-          "__remove__": "Remove this entry"
-        }
-      },
-      "shared_calendars": {
-        "title": "Shared calendars",
-        "data": {"action": "Action"}
-      },
-      "shared_calendar_edit": {
-        "title": "Shared calendar",
-        "data": {
-          "entity": "Calendar entity",
-          "members": "Members",
-          "name": "Name",
-          "color": "Color (hex)",
-          "__remove__": "Remove this entry"
-        }
-      },
-      "shared_chores": {
-        "title": "Shared chores",
-        "data": {"action": "Action"}
-      },
-      "shared_chore_edit": {
-        "title": "Shared chore",
-        "data": {
-          "entity": "Todo entity",
-          "members": "Members",
-          "type": "Type",
-          "name": "Name",
-          "color": "Color (hex)",
-          "__remove__": "Remove this entry"
-        }
-      },
-      "general": {
-        "title": "General settings",
-        "description": "Optional integration-wide settings.",
-        "data": {
-          "meal_calendar": "Meal calendar"
+      "entry_type": "Member",
+      "step": {
+        "user": {
+          "title": "Member",
+          "data": {
+            "name": "Name",
+            "calendar": "Primary calendar",
+            "calendar_label": "Calendar label",
+            "color": "Color (hex)",
+            "person": "Person entity",
+            "notify": "Notify target (mobile_app_*)",
+            "chores": "Chore lists",
+            "category": "Calendar category"
+          }
         }
       }
     },
-    "error": {
-      "base": "Invalid input: {error}"
+    "extra_calendar": {
+      "initiate_flow": {
+        "user": "Add extra calendar",
+        "reconfigure": "Reconfigure extra calendar"
+      },
+      "entry_type": "Extra calendar",
+      "abort": {
+        "no_members": "Add a member first before adding extra calendars."
+      },
+      "step": {
+        "user": {
+          "title": "Extra calendar",
+          "data": {
+            "parent_member": "Member",
+            "entity": "Calendar entity",
+            "label": "Label",
+            "default_summary": "Default summary",
+            "default_description": "Default description",
+            "category": "Calendar category"
+          }
+        }
+      }
+    },
+    "shared_calendar": {
+      "initiate_flow": {
+        "user": "Add shared calendar",
+        "reconfigure": "Reconfigure shared calendar"
+      },
+      "entry_type": "Shared calendar",
+      "step": {
+        "user": {
+          "title": "Shared calendar",
+          "data": {
+            "entity": "Calendar entity",
+            "members": "Members",
+            "name": "Name",
+            "color": "Color (hex)",
+            "category": "Calendar category"
+          }
+        }
+      }
+    },
+    "shared_chore": {
+      "initiate_flow": {
+        "user": "Add shared chore",
+        "reconfigure": "Reconfigure shared chore"
+      },
+      "entry_type": "Shared chore",
+      "step": {
+        "user": {
+          "title": "Shared chore",
+          "data": {
+            "entity": "Todo entity",
+            "members": "Members",
+            "type": "Type (set to 'trash' for auto-creation from trash sensors)",
+            "name": "Name",
+            "color": "Color (hex)"
+          }
+        }
+      }
+    },
+    "trash": {
+      "initiate_flow": {
+        "user": "Add trash collection",
+        "reconfigure": "Reconfigure trash collection"
+      },
+      "entry_type": "Trash collection",
+      "step": {
+        "user": {
+          "title": "Trash collection",
+          "data": {
+            "type": "Type",
+            "sensor": "Sensor",
+            "label": "Label",
+            "color": "Color (hex)",
+            "emoji": "Emoji",
+            "reminder_bins": "Auto-create chore: empty bins (evening before)",
+            "reminder_kliko": "Auto-create chore: kliko at the curb (morning of)"
+          }
+        }
+      }
+    },
+    "meal_planner": {
+      "initiate_flow": {
+        "user": "Add meal planner",
+        "reconfigure": "Reconfigure meal planner"
+      },
+      "entry_type": "Meal planner",
+      "step": {
+        "user": {
+          "title": "Meal planner",
+          "description": "Calendar for meal events + AI suggestion settings. Empty fields use sensible defaults; one item per line for the lists.",
+          "data": {
+            "meal_calendar": "Meal calendar",
+            "ai_task_entity": "AI task entity",
+            "shopping_list": "Shopping list (todo)",
+            "max_minutes": "Maximum prep time (min)",
+            "cuisines": "Cuisines (one per line)",
+            "pantry_staples": "Pantry staples (one per line)",
+            "restrictions": "Restrictions (one per line)",
+            "extra_notes": "Extra instructions (free text)"
+          }
+        }
+      },
+      "abort": {
+        "already_configured": "A meal planner already exists. Reconfigure that one instead of adding a new one."
+      }
+    },
+    "meal_day_override": {
+      "initiate_flow": {
+        "user": "Add meal weekday override",
+        "reconfigure": "Reconfigure meal weekday override"
+      },
+      "entry_type": "Meal weekday override",
+      "abort": {
+        "no_weekdays_left": "All seven weekdays already have an override."
+      },
+      "step": {
+        "user": {
+          "title": "Weekday override",
+          "description": "Tweak the AI meal suggestion for one specific weekday. The note is appended to the prompt (e.g. 'Training at 6pm — keep it quick'); max prep time overrides the planner default for that day. Leave both empty to skip.",
+          "data": {
+            "weekday": "Weekday",
+            "note": "Note for the AI prompt",
+            "max_minutes": "Max prep time (minutes, overrides planner default)"
+          }
+        }
+      }
     }
   },
   "entity": {
     "calendar": {
-      "alles": { "name": "All" },
-      "trash": { "name": "Trash" }
+      "alles": {
+        "name": "All"
+      },
+      "trash": {
+        "name": "Trash"
+      }
     },
     "sensor": {
-      "chores": { "name": "Chores" },
-      "compliment": { "name": "Greeting" },
-      "meals": { "name": "Meals" },
-      "recent_meals": { "name": "Recent meals" },
-      "members": { "name": "Members" },
-      "progress": { "name": "Progress" }
+      "chores": {
+        "name": "Chores"
+      },
+      "compliment": {
+        "name": "Greeting"
+      },
+      "meals": {
+        "name": "Meals"
+      },
+      "recent_meals": {
+        "name": "Recent meals"
+      },
+      "meal_suggestion": {
+        "name": "Meal suggestion"
+      },
+      "members": {
+        "name": "Members"
+      },
+      "progress": {
+        "name": "Progress"
+      }
     },
     "binary_sensor": {
-      "meals_unplanned": { "name": "Meals to plan" }
+      "meals_unplanned": {
+        "name": "Meals to plan"
+      }
     },
     "select": {
-      "calendar_filter": { "name": "Calendar filter" },
+      "calendar_filter": {
+        "name": "Calendar filter"
+      },
       "view": {
         "name": "View",
         "state": {
           "today": "Today",
-          "tomorrow": "Tomorrow",
-          "today_tomorrow": "Today + Tomorrow",
+          "2_days": "2 Days",
+          "3_days": "3 Days",
           "week": "Week",
           "work_week": "Work week",
           "two_weeks": "2 Weeks",
@@ -154,23 +231,75 @@
           "agenda": "Agenda"
         }
       },
-      "event_member": { "name": "Event member" },
-      "event_calendar": { "name": "Event calendar" }
+      "event_member": {
+        "name": "Event member"
+      },
+      "event_calendar": {
+        "name": "Event calendar"
+      }
     },
     "switch": {
-      "event_all_day": { "name": "Event all day" },
-      "show_reminders": { "name": "Show reminders" }
+      "event_all_day": {
+        "name": "Event all day"
+      },
+      "show_reminders": {
+        "name": "Show reminders"
+      },
+      "category_personal": {
+        "name": "Personal"
+      },
+      "category_work": {
+        "name": "Work"
+      },
+      "category_school": {
+        "name": "School"
+      },
+      "category_hobby": {
+        "name": "Hobby"
+      },
+      "category_family": {
+        "name": "Family"
+      },
+      "category_other": {
+        "name": "Other"
+      }
     },
     "text": {
-      "event_title": { "name": "Event title" },
-      "countdown_label": { "name": "Countdown label" }
+      "event_title": {
+        "name": "Event title"
+      },
+      "countdown_label": {
+        "name": "Countdown label"
+      }
     },
     "datetime": {
-      "event_start": { "name": "Event start" },
-      "event_end": { "name": "Event end" },
-      "day_start": { "name": "Day start" },
-      "day_end": { "name": "Day end" },
-      "countdown_date": { "name": "Countdown date" }
+      "event_start": {
+        "name": "Event start"
+      },
+      "event_end": {
+        "name": "Event end"
+      },
+      "day_start": {
+        "name": "Day start"
+      },
+      "day_end": {
+        "name": "Day end"
+      },
+      "countdown_date": {
+        "name": "Countdown date"
+      }
+    }
+  },
+  "selector": {
+    "calendar_category": {
+      "options": {
+        "personal": "Personal",
+        "work": "Work",
+        "school": "School",
+        "hobby": "Hobby",
+        "family": "Family",
+        "other": "Other"
+      }
     }
   },
   "services": {
@@ -197,6 +326,28 @@
           "description": "The Google Tasks uid of the reminder to cancel."
         }
       }
+    },
+    "suggest_meal": {
+      "name": "Suggest meal",
+      "description": "Generate a meal suggestion via ai_task.generate_data and store it on sensor.familyboard_meal_suggestion.",
+      "fields": {
+        "date": {
+          "name": "Target date",
+          "description": "The date the meal is for. Defaults to today."
+        },
+        "ai_task_entity": {
+          "name": "AI task entity",
+          "description": "One-shot override of the configured ai_task_entity."
+        }
+      }
+    },
+    "accept_meal_suggestion": {
+      "name": "Accept suggestion",
+      "description": "Plan the current suggestion as a meal_calendar event and append ingredients to the shopping list."
+    },
+    "clear_meal_suggestion": {
+      "name": "Clear suggestion",
+      "description": "Discard the current meal suggestion without acting on it."
     }
   }
 }

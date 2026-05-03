@@ -23,7 +23,13 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, TASK_IDENTIFIER, get_device_info
+from .const import (
+    DEFAULT_CALENDAR_CATEGORY,
+    DEFAULT_SHARED_CALENDAR_CATEGORY,
+    DOMAIN,
+    TASK_IDENTIFIER,
+    get_device_info,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,12 +38,7 @@ _LOGGER = logging.getLogger(__name__)
 MARKER_PREFIX = "[FB:"
 MARKER_SUFFIX = "]"
 
-DEFAULT_TRASH_COLORS = {
-    "rest": "#555555",
-    "paper": "#4A90D9",
-    "gft": "#27AE60",
-    "pmd": "#F39C12",
-}
+DEFAULT_TRASH_COLOR = "#B8B8B8"
 DEFAULT_TRASH_EMOJIS = {
     "rest": "\U0001f5d1\ufe0f",
     "paper": "\U0001f4c4",
@@ -46,16 +47,22 @@ DEFAULT_TRASH_EMOJIS = {
 }
 
 
-def _build_marker(members: list[str], colors: list[str]) -> str:
-    """Build the `[FB:members=...;colors=...]` marker stored in descriptions."""
-    return (
-        MARKER_PREFIX
-        + "members="
-        + ",".join(members)
-        + ";colors="
-        + ",".join(colors)
-        + MARKER_SUFFIX
-    )
+def _build_marker(
+    members: list[str], colors: list[str], categories: list[str] | None = None
+) -> str:
+    """Build the `[FB:members=...;colors=...;categories=...]` marker.
+
+    ``categories`` is optional for backwards compatibility with older
+    cached descriptions; new events always include it so the frontend
+    can filter by category.
+    """
+    parts = [
+        "members=" + ",".join(members),
+        "colors=" + ",".join(colors),
+    ]
+    if categories:
+        parts.append("categories=" + ",".join(categories))
+    return MARKER_PREFIX + ";".join(parts) + MARKER_SUFFIX
 
 
 def _is_task(ev: dict) -> bool:
@@ -100,6 +107,10 @@ async def async_setup_entry(
     # Build entity_id -> defaults map across all members + extras
     default_descriptions: dict[str, str] = {}
     default_summaries: dict[str, str] = {}
+    # Build entity_id -> category map (defaults: members → personal,
+    # shared_calendars → shared). Used to filter events by category in
+    # the frontend via the [FB:...;categories=...] description marker.
+    entity_categories: dict[str, str] = {}
     for member in conf["members"]:
         if member.get("calendar_default_description"):
             default_descriptions[member["calendar"]] = member[
@@ -107,11 +118,18 @@ async def async_setup_entry(
             ]
         if member.get("calendar_default_summary"):
             default_summaries[member["calendar"]] = member["calendar_default_summary"]
+        primary_category = member.get("category", DEFAULT_CALENDAR_CATEGORY)
+        entity_categories[member["calendar"]] = primary_category
         for extra in member.get("extra_calendars", []):
             if extra.get("default_description"):
                 default_descriptions[extra["entity"]] = extra["default_description"]
             if extra.get("default_summary"):
                 default_summaries[extra["entity"]] = extra["default_summary"]
+            entity_categories[extra["entity"]] = extra.get("category", primary_category)
+    for shared in conf.get("shared_calendars", []):
+        entity_categories[shared["entity"]] = shared.get(
+            "category", DEFAULT_SHARED_CALENDAR_CATEGORY
+        )
 
     entities: list[CalendarEntity] = []
     for member in conf["members"]:
@@ -123,6 +141,8 @@ async def async_setup_entry(
                 primary_entity=member["calendar"],
                 extra_entities=extras,
                 color=member.get("color", "#4A90D9"),
+                category=member.get("category", DEFAULT_CALENDAR_CATEGORY),
+                entity_categories=entity_categories,
                 default_descriptions=default_descriptions,
                 default_summaries=default_summaries,
             )
@@ -135,6 +155,7 @@ async def async_setup_entry(
             conf.get("trash", []),
             default_descriptions,
             default_summaries,
+            entity_categories,
         )
     )
 
@@ -174,11 +195,7 @@ def _build_trash_events(
 
         attrs = state.attributes
         label = t.get("label") or attrs.get("label") or ttype.capitalize()
-        color = (
-            t.get("color")
-            or attrs.get("color")
-            or DEFAULT_TRASH_COLORS.get(ttype, "#666666")
-        )
+        color = t.get("color") or attrs.get("color") or DEFAULT_TRASH_COLOR
         emoji = (
             t.get("emoji")
             or attrs.get("emoji")
@@ -208,6 +225,8 @@ class FamilyBoardProxyCalendar(CoordinatorEntity, CalendarEntity):
         primary_entity: str,
         extra_entities: list[str],
         color: str,
+        category: str = DEFAULT_CALENDAR_CATEGORY,
+        entity_categories: dict[str, str] | None = None,
         default_descriptions: dict[str, str] | None = None,
         default_summaries: dict[str, str] | None = None,
     ) -> None:
@@ -217,11 +236,18 @@ class FamilyBoardProxyCalendar(CoordinatorEntity, CalendarEntity):
         self._primary_entity = primary_entity
         self._extra_entities = extra_entities
         self._color = color
+        self._category = category
+        self._entity_categories = entity_categories or {}
         self._default_descriptions = default_descriptions or {}
         self._default_summaries = default_summaries or {}
         self._attr_name = member_name
         self._attr_unique_id = f"familyboard_{member_name.lower()}"
         self._attr_device_info = get_device_info()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        """Expose color + primary category so frontend cards can read them."""
+        return {"color": self._color, "category": self._category}
 
     @property
     def event(self) -> CalendarEvent | None:
@@ -262,6 +288,7 @@ class FamilyBoardProxyCalendar(CoordinatorEntity, CalendarEntity):
             )
             default_desc = self._default_descriptions.get(entity)
             default_summary = self._default_summaries.get(entity)
+            entity_category = self._entity_categories.get(entity, self._category)
             for ev in raw:
                 if _is_task(ev):
                     continue
@@ -276,6 +303,12 @@ class FamilyBoardProxyCalendar(CoordinatorEntity, CalendarEntity):
                     continue
                 description = ev.get("description") or default_desc
                 summary = ev.get("summary") or default_summary or ""
+                # Prepend a category marker so the frontend can filter by
+                # category; preserves any existing user description.
+                marker = _build_marker(
+                    [self._member_name], [self._color], [entity_category]
+                )
+                description = marker + ("\n\n" + description if description else "")
                 out.append(
                     CalendarEvent(
                         summary=summary,
@@ -301,6 +334,7 @@ class FamilyBoardAllesCalendar(CoordinatorEntity, CalendarEntity):
         trash: list[dict] | None = None,
         default_descriptions: dict[str, str] | None = None,
         default_summaries: dict[str, str] | None = None,
+        entity_categories: dict[str, str] | None = None,
     ) -> None:
         """Store member configs and trash sensors for refresh tracking."""
         super().__init__(coordinator)
@@ -308,6 +342,7 @@ class FamilyBoardAllesCalendar(CoordinatorEntity, CalendarEntity):
         self._trash = trash or []
         self._default_descriptions = default_descriptions or {}
         self._default_summaries = default_summaries or {}
+        self._entity_categories = entity_categories or {}
         self._attr_unique_id = "familyboard_alles"
         self._attr_device_info = get_device_info()
 
@@ -363,6 +398,9 @@ class FamilyBoardAllesCalendar(CoordinatorEntity, CalendarEntity):
                 )
                 default_desc = self._default_descriptions.get(entity, "")
                 default_summary = self._default_summaries.get(entity, "")
+                entity_category = self._entity_categories.get(
+                    entity, DEFAULT_CALENDAR_CATEGORY
+                )
                 for ev in raw:
                     if _is_task(ev):
                         continue
@@ -380,10 +418,14 @@ class FamilyBoardAllesCalendar(CoordinatorEntity, CalendarEntity):
                             "location": ev.get("location") or "",
                             "members": [name],
                             "member_colors": [color],
+                            "categories": [entity_category],
                         }
-                    elif name not in existing["members"]:
-                        existing["members"].append(name)
-                        existing["member_colors"].append(color)
+                    else:
+                        if name not in existing["members"]:
+                            existing["members"].append(name)
+                            existing["member_colors"].append(color)
+                        if entity_category not in existing["categories"]:
+                            existing["categories"].append(entity_category)
 
         out: list[CalendarEvent] = []
         for ev in sorted(bucket.values(), key=lambda e: e.get("start") or ""):
@@ -410,10 +452,11 @@ class FamilyBoardAllesCalendar(CoordinatorEntity, CalendarEntity):
         """Build a CalendarEvent with the embedded multi-member marker."""
         members = ev.get("members") or []
         colors = ev.get("member_colors") or []
+        categories = ev.get("categories") or []
         summary = ev.get("summary", "")
         if len(members) > 1 and not summary.startswith("\U0001f465"):
             summary = "\U0001f465 " + summary
-        marker = _build_marker(members, colors)
+        marker = _build_marker(members, colors, categories)
         existing_desc = ev.get("description") or ""
         if existing_desc.startswith(MARKER_PREFIX):
             try:

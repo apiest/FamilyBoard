@@ -46,11 +46,18 @@ class FamilyBoardChoresCard extends HTMLElement {
       member: config.member || null,
       members_entity: config.members_entity || "sensor.familyboard_members",
       show_header: config.show_header !== false,
+      show_shared: config.show_shared !== false,
       ...config,
     };
   }
 
+  _isSharedMode() {
+    return this._config.member === "shared";
+  }
+
   _isVisible() {
+    // Shared-only cards are always visible regardless of filter
+    if (this._isSharedMode()) return true;
     // When member is configured, hide card if filter excludes that member
     if (!this._config.member) return true;
     if (!this._config.filter_entity || !this._hass) return true;
@@ -91,14 +98,24 @@ class FamilyBoardChoresCard extends HTMLElement {
       }
     }
 
+    // Shared-only mode: ignore member/filter logic and show_shared toggle
+    if (this._isSharedMode()) {
+      return items.filter((i) => i.shared);
+    }
+
+    const dropShared = (list) =>
+      this._config.show_shared === false ? list.filter((i) => !i.shared) : list;
+
     // Hard member filter: when card is bound to a member, always show only that member
     if (this._config.member) {
       const m = this._config.member;
-      return items.filter((i) => {
-        if (i.member === m) return true;
-        if (i.shared && i.shared_members && i.shared_members.includes(m)) return true;
-        return false;
-      });
+      return dropShared(
+        items.filter((i) => {
+          if (i.member === m) return true;
+          if (i.shared && i.shared_members && i.shared_members.includes(m)) return true;
+          return false;
+        }),
+      );
     }
 
     // Apply member filter from filter_entity
@@ -107,18 +124,20 @@ class FamilyBoardChoresCard extends HTMLElement {
       if (filterState) {
         const filter = filterState.state;
         if (filter === "Alles") {
-          return items;
+          return dropShared(items);
         }
         // Member filter: include personal chores + shared chores where member is listed
-        return items.filter((i) => {
-          if (i.member === filter) return true;
-          if (i.shared && i.shared_members && i.shared_members.includes(filter)) return true;
-          return false;
-        });
+        return dropShared(
+          items.filter((i) => {
+            if (i.member === filter) return true;
+            if (i.shared && i.shared_members && i.shared_members.includes(filter)) return true;
+            return false;
+          }),
+        );
       }
     }
 
-    return items;
+    return dropShared(items);
   }
 
   _filterByView(items, view) {
@@ -260,16 +279,17 @@ class FamilyBoardChoresCard extends HTMLElement {
     this.style.display = "";
 
     const items = this._getFilteredItems();
-    const memberMeta = this._config.member ? this._getMemberMeta(this._config.member) : null;
-    const memberColor = memberMeta?.color || "#4A90D9";
+    const sharedMode = this._isSharedMode();
+    const memberMeta = this._config.member && !sharedMode ? this._getMemberMeta(this._config.member) : null;
+    const memberColor = sharedMode ? "#8b949e" : memberMeta?.color || "#4A90D9";
     const memberPic = memberMeta?.picture || "";
 
     // Determine "active member" for shared-chore badge override:
-    // 1. Explicit `member` config wins
+    // 1. Explicit `member` config wins (unless shared mode)
     // 2. Else, when filter_entity is set to a specific member name (not "Alles"), use that
-    let activeMember = this._config.member || null;
+    let activeMember = sharedMode ? null : this._config.member || null;
     let activeMemberMeta = memberMeta;
-    if (!activeMember && this._config.filter_entity) {
+    if (!sharedMode && !activeMember && this._config.filter_entity) {
       const fs = this._hass.states[this._config.filter_entity];
       if (fs && fs.state && fs.state !== "Alles") {
         activeMember = fs.state;
@@ -286,7 +306,7 @@ class FamilyBoardChoresCard extends HTMLElement {
       .card {
         padding: 16px;
         background: var(--ha-card-background, var(--card-background-color, rgba(255,255,255,0.04)));
-        border-radius: var(--ha-card-border-radius, 16px);
+        border-radius: var(--ha-card-border-radius, 20px);
         border: 1px solid var(--ha-card-border-color, rgba(255,255,255,0.06));
       }
       .empty {
@@ -374,7 +394,7 @@ class FamilyBoardChoresCard extends HTMLElement {
       }
       .task-summary {
         color: var(--primary-text-color, #e6edf3);
-        font-size: 1em;
+        font-size: 1.05em;
         line-height: 1.3;
         white-space: nowrap;
         overflow: hidden;
@@ -382,12 +402,12 @@ class FamilyBoardChoresCard extends HTMLElement {
       }
       .task-time {
         color: var(--secondary-text-color, #8b949e);
-        font-size: 0.82em;
+        font-size: 0.92em;
         margin-top: 1px;
       }
       .task-desc {
         color: var(--secondary-text-color, #8b949e);
-        font-size: 0.82em;
+        font-size: 0.88em;
         margin-top: 2px;
         opacity: 0.8;
         white-space: nowrap;
@@ -475,7 +495,15 @@ class FamilyBoardChoresCard extends HTMLElement {
 
     let html = `<style>${style}</style><div class="card" style="--fb-member-color: ${this._escAttr(memberColor)}">`;
 
-    if (this._config.member && this._config.show_header) {
+    if (sharedMode && this._config.show_header) {
+      html += `
+        <div class="member-header">
+          <div class="avatar">👥</div>
+          <div class="name">Algemene taken</div>
+          <div class="count">${items.length} ${items.length === 1 ? "taak" : "taken"}</div>
+        </div>
+      `;
+    } else if (this._config.member && this._config.show_header) {
       const initial = (this._config.member || "?")[0];
       const avatar = memberPic
         ? `<img src="${this._escAttr(memberPic)}" alt="${this._esc(initial)}">`
@@ -525,11 +553,13 @@ class FamilyBoardChoresCard extends HTMLElement {
 
         const initial = (item.member || "?")[0];
         const pic = item.picture || "";
-        // For shared chores when an active member is known, show that member's avatar/color
+        // For shared chores when an active member is known, show that member's avatar/color.
+        // In shared-only mode we hide the badge entirely — the header already
+        // says "Algemene taken" so per-row member icons add no information.
         let badgeColor = item.color || "#4A90D9";
         let badgePic = pic;
         let badgeInitial = initial;
-        if (item.shared && activeMember) {
+        if (!sharedMode && item.shared && activeMember) {
           badgeColor = activeColor;
           badgePic = activePic;
           badgeInitial = (activeMember || "?")[0];
@@ -538,12 +568,12 @@ class FamilyBoardChoresCard extends HTMLElement {
           ? `<img src="${this._escAttr(badgePic)}" alt="${this._esc(badgeInitial)}">`
           : this._esc(badgeInitial);
         const desc = item.description || "";
-        const sharedHtml = item.shared ? '<span class="shared-indicator">👥</span>' : '';
+        const sharedHtml = !sharedMode && item.shared ? '<span class="shared-indicator">👥</span>' : '';
 
         html += `
           <div class="${rowClass}" data-uid="${item.uid || ""}" style="--fb-color: ${this._escAttr(item.color || "#4A90D9")}">
             <div class="${checkboxClass}" data-uid="${item.uid || ""}" data-todo="${item.todo_entity || ""}"></div>
-            <div class="badge" style="background: ${this._escAttr(badgeColor)}">${badgeContent}</div>
+            ${sharedMode ? "" : `<div class="badge" style="background: ${this._escAttr(badgeColor)}">${badgeContent}</div>`}
             <div class="task-content">
               <div class="task-summary">${this._esc(item.summary || "")}${isActive ? '<span class="live-pill">NU</span>' : ''}${sharedHtml}</div>
               ${timeStr ? `<div class="${timeClass}">${overdue ? "⚠️ " : ""}${this._esc(timeStr)}</div>` : ""}
@@ -613,14 +643,33 @@ class FamilyBoardChoresCard extends HTMLElement {
   }
 }
 
-const CHORES_EDITOR_SCHEMA = [
-  { name: "entity", required: true, selector: { entity: { domain: "sensor" } } },
-  { name: "filter_entity", selector: { entity: { domain: "select" } } },
-  { name: "view_entity", selector: { entity: { domain: "select" } } },
-  { name: "members_entity", selector: { entity: { domain: "sensor" } } },
-  { name: "member", selector: { text: {} } },
-  { name: "show_header", selector: { boolean: {} } },
-];
+const SHARED_MEMBER_OPTION = { value: "shared", label: "Algemene (gedeeld)" };
+
+function buildChoresEditorSchema(hass, membersEntity) {
+  let memberSelector = { text: {} };
+  const stateObj = hass && membersEntity ? hass.states[membersEntity] : null;
+  const members = stateObj?.attributes?.members;
+  if (Array.isArray(members) && members.length) {
+    memberSelector = {
+      select: {
+        mode: "dropdown",
+        options: [
+          ...members.map((m) => ({ value: m.name, label: m.name })),
+          SHARED_MEMBER_OPTION,
+        ],
+      },
+    };
+  }
+  return [
+    { name: "entity", required: true, selector: { entity: { domain: "sensor" } } },
+    { name: "filter_entity", selector: { entity: { domain: "select" } } },
+    { name: "view_entity", selector: { entity: { domain: "select" } } },
+    { name: "members_entity", selector: { entity: { domain: "sensor" } } },
+    { name: "member", selector: memberSelector },
+    { name: "show_header", selector: { boolean: {} } },
+    { name: "show_shared", selector: { boolean: {} } },
+  ];
+}
 
 class FamilyBoardChoresCardEditor extends HTMLElement {
   constructor() {
@@ -645,7 +694,6 @@ class FamilyBoardChoresCardEditor extends HTMLElement {
     if (!this._form) {
       this._form = document.createElement("ha-form");
       this._form.computeLabel = (s) => s.label || s.name;
-      this._form.schema = CHORES_EDITOR_SCHEMA;
       this._form.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
         this.dispatchEvent(
@@ -659,6 +707,10 @@ class FamilyBoardChoresCardEditor extends HTMLElement {
       this.shadowRoot.appendChild(this._form);
     }
     if (this._hass) this._form.hass = this._hass;
+    this._form.schema = buildChoresEditorSchema(
+      this._hass,
+      this._config.members_entity || "sensor.familyboard_members",
+    );
     this._form.data = this._config;
   }
 }

@@ -7,6 +7,160 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-03
+
+### Added
+- **Calendar category in sub-item forms.** Member, Extra calendar and
+  Shared calendar sub-items now expose a `category` dropdown
+  (`personal` / `work` / `school` / `hobby` / `family` / `other`),
+  matching the YAML schema. Previously the field was YAML-only, so
+  UI users couldn't tag their calendars for the category filter chips.
+- **Consolidated `meals:` YAML block.** The legacy top-level
+  `meal_calendar:` and `meal_planner:` keys have been folded into a
+  single `meals:` block (with `calendar:` nested inside). Reads cleaner
+  and matches the singleton sub-item.
+- **Subentry-based configuration.** Members, extra calendars, shared
+  calendars, shared chores, trash sensors, the meal planner and
+  per-weekday meal overrides are now individual *sub-items* on the
+  integration page (Settings → Devices & Services → FamilyBoard →
+  click ➕). Add, edit and remove each one separately instead of
+  navigating one giant options-flow form.
+- **Decorative event illustrations.** Opt-in `event_images: true`
+  card option on `custom:familyboard-calendar-card` inlines a
+  full-color illustration into timed event tiles, picked from the
+  title via a built-in NL + EN keyword map (23 themes: birthday,
+  beer, bbq, party, school, phone, work, badminton, fishing,
+  walking, hiking, outdoors, gym, doctor, food, camping, travel,
+  family, friends, shopping, cleaning, pet, music). SVGs are
+  sourced from [unDraw](https://undraw.co/) and re-mapped so every
+  fill resolves to a `--fb-deco-*` CSS variable (`accent`,
+  `accent-2`, `dark`, `grey`, `skin`, `light`) — themable per tile,
+  per member, or globally via a HA theme. A handful of scenes
+  (`friends`, `beer`, `fishing`) ship with per-theme overrides where
+  the defaults under-read. Tile height decides the layout: ≥ 120 px
+  gets a full-bleed banner; 56–120 px gets a corner badge at
+  bottom-right that scales 4:3 with the tile (capped at 96×72);
+  shorter/compact tiles stay plain. Pure client-side, deterministic,
+  offline. **No fallback** — when no keyword matches, the tile
+  renders plainly. Override per event with `[FB:theme=<key>]`, or
+  suppress with `[FB:theme=none]`. Add new themes by dropping a
+  themable SVG into `frontend/icons/events/`.
+- **Progress card celebration** — when a member's daily progress ring
+  hits 100% the ring briefly pulses with a glow and a small confetti
+  burst, drawing attention to the "all done" moment without adding any
+  extra noise to the rest of the dashboard. Animation is suppressed
+  for users with `prefers-reduced-motion: reduce`.
+- **Meal planning Phase 2.5** — AI-assisted dinner suggestion. New
+  `meal_planner` config block (cuisines, pantry staples, restrictions,
+  per-weekday overrides, optional shopping list target) drives a
+  server-side prompt builder that calls `ai_task.generate_data`. New
+  services: `familyboard.suggest_meal` (with optional `date`),
+  `familyboard.accept_meal_suggestion` and
+  `familyboard.clear_meal_suggestion`. New
+  `sensor.familyboard_meal_suggestion` exposes the latest suggestion
+  (state = title; attrs = date / reason / ingredients / generated_at)
+  and persists across restarts. Dashboard chip "Maaltijd" opens a popup
+  with Vandaag/Morgen/Overmorgen quick picks; Accept creates the
+  calendar event and appends ingredients to the configured shopping
+  list. Editable from the UI via a new options-flow step
+  **Maaltijdplanner (AI)** (AI task entity, shopping list, max minutes,
+  cuisines / pantry / restrictions / extra notes — multi-line, one per
+  line). `day_overrides` remain YAML-only and are preserved across UI
+  edits.
+- **Calendar category filter** — new `category:` field on `members[]`,
+  `members[].extra_calendars[]` and `shared_calendars[]`, one of
+  `personal`, `work`, `school`, `hobby`, `family`, `other` (default
+  `personal` for both members and shared calendars). One
+  `switch.familyboard_category_<key>` is created per category in use
+  (default on, restored on restart) and stale switches are purged from
+  the entity registry when the matching category disappears from YAML.
+  The dashboard strategy auto-renders a chip row above the calendar;
+  `familyboard-calendar-card` auto-discovers
+  `switch.familyboard_category_*` (override via `category_switches:`)
+  and hides events whose categories are all currently disabled. Trash
+  and reminders are never filtered. New standalone
+  `custom:familyboard-category-card` for manual dashboards.
+- **Chores card scoping** — `familyboard-chores-card` gains
+  `show_shared` (default `true`) to hide shared ("algemene") chores,
+  and a `member: shared` value that turns the card into a shared-only
+  view with an "Algemene taken" header. The card editor exposes
+  `member` as a dropdown of configured family members plus an
+  "Algemene (gedeeld)" option.
+- **Trash chore granularity** — `trash[].reminder_bins` and
+  `trash[].reminder_kliko` (both default `true`) skip just one of the
+  two auto-created chores per trash type (e.g. `reminder_bins: false`
+  to keep only the "kliko aan de weg" reminder).
+- **Calendar entity attributes** — `FamilyBoardProxyCalendar` now
+  exposes `color` and `category` as state attributes so frontend cards
+  inherit them from `configuration.yaml` automatically. Dashboard YAML
+  no longer needs a hardcoded `colors:` map on
+  `familyboard-calendar-card`.
+- README *Recommended palette* (pastel blue/green/pink) for member
+  colors. Optional — auto-contrast text keeps any palette readable.
+
+### Changed
+- **Meal weekday override sub-item is now self-explanatory.** Renamed
+  the entry type to *Meal weekday override* and added a description
+  explaining that the note is appended to the AI prompt and
+  `max_minutes` overrides the planner default for that one day.
+- **Member filter merged into the progress card.** `familyboard-progress-card`
+  now accepts `filter_entity` + `selectable: true`; each tile becomes a
+  button that writes to the filter `select`, and the selected member's
+  name gets a 2 px underline in the member's color (every tile is
+  underlined when the filter is `Alles`). Tile DOM was reordered so
+  the member name sits above the ring. The default dashboard strategy
+  uses this built-in filter and no longer renders a separate
+  `familyboard-filter-card` row, freeing the side stack for countdown
+  + reminders. The standalone filter card remains fully supported for
+  hand-built dashboards.
+- **Subentry migration.** Config-entry version bumped to **2**.
+  Existing v1 entries are migrated automatically on first start: every
+  list item in `entry.options` becomes a subentry with a stable
+  `unique_id`. Migration is idempotent.
+- YAML configuration still works and is now **upserted** into
+  sub-items by stable identity. Sub-items you added via the UI
+  without a YAML twin are preserved across re-imports.
+- **Trash auto-chore reminders are opt-in for new entries.** When you
+  add a trash sub-item via the UI, both *empty bins* and *kliko at
+  the curb* default to **off**; tick the boxes you want. Existing
+  YAML / migrated v1 entries keep the legacy default-on behaviour
+  via a migration carve-out.
+- The classic options flow is now an informational placeholder; all
+  configuration moved to sub-items.
+- **Calendar styling** — events are larger, rounder and friendlier on
+  a wall-mounted tablet. Event font size is view-scoped via a
+  `--fb-event-font` CSS variable (Day ~1.05em → 2 weeks ~0.82em, with
+  a small bump on screens ≥ 900px). All-day bars grew to 22px tall
+  with 9px rounded corners and the multi-member gradient angle was
+  softened from 135° to 120°. Event text auto-picks dark or light
+  foreground from the background luminance (WCAG-aware) so pastel
+  member colors stay readable without forcing white text.
+- Slightly larger secondary text and rounder corners (16 → 20px) on
+  the chores, progress and countdown cards.
+- **View options reworked** — removed `tomorrow` and `today_tomorrow`;
+  added `2_days` (Vandaag + 1) and `3_days` (Vandaag + 2). Restored
+  states migrate automatically (`tomorrow → today`,
+  `today_tomorrow → 2_days`, `Vandaag + Morgen → 2_days`).
+- View chip labels are larger and bolder (~0.95rem / 600) on
+  `familyboard-view-card` so they stay legible on a wall-mounted
+  tablet.
+- **Trash colors** — calendar card honors the per-event color encoded
+  in the `[FB:trash=…;color=…]` description marker, so each trash type
+  renders in its configured `trash[].color` straight from
+  `configuration.yaml`. The default color was simplified to a single
+  pastel grey (`#B8B8B8`); override per type via `trash[].color`.
+
+### Fixed
+- Locked the per-member progress logic for shared chores with a new
+  test (`tests/test_progress.py`): completing a shared chore now has
+  guardrails ensuring it credits *every* member listed on the chore.
+  No code change — the existing fan-out already does this; the test
+  prevents future regressions.
+
+### Deprecated
+- Top-level `meal_calendar:` and `meal_planner:` YAML keys still work
+  but emit a deprecation warning. Migrate to the `meals:` block.
+
 ## [0.2.1] - 2026-04-29
 
 ### Changed
