@@ -138,6 +138,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
       weather_entity: config.weather_entity || null,
       weather_show_low: config.weather_show_low === true,
       locale: config.locale || "nl",
+      event_images: config.event_images === true,
     };
     if (this._config.end_hour <= this._config.start_hour) {
       this._config.end_hour = this._config.start_hour + 1;
@@ -747,6 +748,80 @@ class FamilyBoardCalendarCard extends HTMLElement {
     return { fg: "#ffffff", shadow: "0 1px 1px rgba(0,0,0,0.4)" };
   }
 
+  // Returns the HTML for a decorative event illustration, or "".
+  // Renders a placeholder div whose contents are filled in by
+  // `_inflateDecorations()` after the body innerHTML is set. The SVG
+  // is inlined so its `currentColor` accents pick up the tile text
+  // color (the dark-grey/skin-tone parts stay as-is). Layouts:
+  //   * banner: full-bleed (height >= 120 px)
+  //   * corner: bottom-right 96x72 (height >= 56 px)
+  // Skipped on reminders, compact tiles and tiles < 56 px tall.
+  _eventDecoHtml(ev, height, compact) {
+    if (!this._config.event_images) return "";
+    if (ev.isReminder) return "";
+    if (compact) return "";
+    if (height < 56) return "";
+    const fb = (typeof window !== "undefined") && window.FamilyBoardEventTheme;
+    if (!fb || typeof fb.eventTheme !== "function") return "";
+    const theme = fb.eventTheme(ev.summary || "", ev.description || "");
+    if (!theme) return "";
+    const safe = String(theme).replace(/[^a-z0-9_-]/gi, "");
+    if (!safe) return "";
+    const cls = height >= 120 ? "fb-event-deco fb-banner" : "fb-event-deco fb-corner";
+    let style = "";
+    if (height < 120) {
+      // Scale the corner badge with the tile so it never crowds the
+      // title/time on short events. 4:3 aspect, ~10 px gutter on top.
+      const ch = Math.max(36, Math.min(72, height - 8));
+      const cw = Math.round(ch * 4 / 3);
+      style = ` style="width:${cw}px;height:${ch}px"`;
+    }
+    return `<div class="${cls}" data-fb-deco="${safe}"${style}></div>`;
+  }
+
+  // Walks decoration placeholders and injects the inlined SVG (so
+  // `currentColor` resolves against the tile's text color). Fetched
+  // SVGs are cached per-theme on the class.
+  _inflateDecorations() {
+    if (!this.shadowRoot) return;
+    const els = this.shadowRoot.querySelectorAll("[data-fb-deco]");
+    if (!els.length) return;
+    const cache = FamilyBoardCalendarCard._decoCache;
+    els.forEach((el) => {
+      const theme = el.dataset.fbDeco;
+      if (!theme || el.firstChild) return;
+      const cached = cache.get(theme);
+      if (cached) {
+        this._injectDeco(el, cached);
+        return;
+      }
+      if (cache.get("__pending_" + theme)) return;
+      cache.set("__pending_" + theme, true);
+      fetch(`/familyboard/icons/events/${theme}.svg?v=5`)
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((text) => {
+          cache.delete("__pending_" + theme);
+          if (!text) return;
+          cache.set(theme, text);
+          this.shadowRoot
+            .querySelectorAll(`[data-fb-deco="${theme}"]`)
+            .forEach((e) => this._injectDeco(e, text));
+        })
+        .catch(() => cache.delete("__pending_" + theme));
+    });
+  }
+
+  _injectDeco(el, svgText) {
+    // Anchor the figure to the bottom-right corner of the placeholder
+    // for both banner and corner variants.
+    const anchor = "xMaxYMax meet";
+    const patched = svgText.replace(
+      /<svg\b/,
+      `<svg preserveAspectRatio="${anchor}"`,
+    );
+    el.innerHTML = patched;
+  }
+
   _formatTime(d) {
     return d.toLocaleTimeString(this._config.locale, { hour: "2-digit", minute: "2-digit" });
   }
@@ -865,6 +940,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
       body.innerHTML = this._renderMonthGrid();
     }
     this._wireEventClicks();
+    this._inflateDecorations();
     this._scrollToHour();
   }
 
@@ -1101,6 +1177,57 @@ class FamilyBoardCalendarCard extends HTMLElement {
         text-shadow: 0 1px 1px rgba(0,0,0,0.4);
         box-sizing: border-box;
       }
+      /* Decorative event illustration. The inlined SVG paints each
+         color role through a CSS variable, so the host can re-theme
+         the figure to read against any member background. Defaults
+         below are tuned to pop on saturated mid-tones; override per
+         tile, per member, or globally via a HA theme. */
+      .fb-event-deco {
+        position: absolute;
+        pointer-events: none;
+        opacity: 0.85;
+        z-index: 0;
+        overflow: hidden;
+        --fb-deco-accent:   #2a9d8f;
+        --fb-deco-accent-2: #ffd166;
+        --fb-deco-dark:     #1d3557;
+        --fb-deco-grey:     #a8dadc;
+        --fb-deco-skin:     #f6c8a8;
+        --fb-deco-light:    #ffffff;
+      }
+      /* Per-theme tweaks where the default palette under-reads. */
+      .fb-event-deco[data-fb-deco="friends"] {
+        opacity: 1;
+        --fb-deco-accent-2: #ef476f;
+        --fb-deco-accent:   #ffd166;
+      }
+      /* Beer scene: bottle/glass go warm orange against blue tiles. */
+      .fb-event-deco[data-fb-deco="beer"] {
+        --fb-deco-accent:   #e76f51;
+        --fb-deco-accent-2: #ffd166;
+      }
+      /* Fishing scene: keep boat + rod in muted natural blue. */
+      .fb-event-deco[data-fb-deco="fishing"] {
+        --fb-deco-accent:   #457b9d;
+        --fb-deco-accent-2: #ffd166;
+      }
+      .fb-event-deco svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .fb-event-deco.fb-banner {
+        inset: 4px;
+      }
+      .fb-event-deco.fb-corner {
+        right: 6px;
+        bottom: 4px;
+        width: 96px;
+        height: 72px;
+      }
+      .fb-event > .fb-ev-time,
+      .fb-event > .fb-ev-title,
+      .fb-event > .fb-ev-line { position: relative; z-index: 1; }
       .fb-event .fb-ev-time { font-size: 0.92em; opacity: 0.95; }
       .fb-event .fb-ev-title {
         font-weight: 500;
@@ -1991,11 +2118,15 @@ class FamilyBoardCalendarCard extends HTMLElement {
       ? `<div class=\"fb-ev-line\"><span class=\"fb-ev-time\">${time}</span> <span class=\"fb-ev-title\">${title}</span></div>`
       : `<div class=\"fb-ev-time\">${time}</div><div class=\"fb-ev-title\">${title}</div>`;
 
+    // Decorative line-art overlay (opt-in, skipped for reminders, short
+    // bars, and compact tiles).
+    const deco = this._eventDecoHtml(ev, height, compact);
+
     return `
       <div class="${cls}"
            ${dataAttr}
            style="top:${top}px;height:${height}px;left:calc(${leftPct}% + 1px);width:calc(${widthPct}% - 4px);background:${bg};color:${fg};text-shadow:${shadow};">
-        ${inner}
+        ${deco}${inner}
       </div>
     `;
   }
@@ -2111,6 +2242,7 @@ const CALENDAR_EDITOR_SCHEMA = [
   },
   { name: "row_height", selector: { number: { min: 12, max: 80, mode: "box" } } },
   { name: "locale", selector: { text: {} } },
+  { name: "event_images", selector: { boolean: {} } },
 ];
 
 class FamilyBoardCalendarCardEditor extends HTMLElement {
@@ -2153,6 +2285,10 @@ class FamilyBoardCalendarCardEditor extends HTMLElement {
     this._form.data = this._config;
   }
 }
+
+// Class-level cache of inlined decoration SVG text, keyed by theme
+// name. Pending fetches are tracked under "__pending_<theme>".
+FamilyBoardCalendarCard._decoCache = new Map();
 
 customElements.define("familyboard-calendar-card-editor", FamilyBoardCalendarCardEditor);
 customElements.define("familyboard-calendar-card", FamilyBoardCalendarCard);

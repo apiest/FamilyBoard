@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-02
+
 ### Added
 - **Subentry-based configuration.** Members, extra calendars, shared
   calendars, shared chores, trash sensors, the meal planner and
@@ -14,36 +16,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   integration page (Settings → Devices & Services → FamilyBoard →
   click ➕). Add, edit and remove each one separately instead of
   navigating one giant options-flow form.
+- **Decorative event illustrations.** Opt-in `event_images: true`
+  card option on `custom:familyboard-calendar-card` inlines a
+  full-color illustration into timed event tiles, picked from the
+  title via a built-in NL + EN keyword map (23 themes: birthday,
+  beer, bbq, party, school, phone, work, badminton, fishing,
+  walking, hiking, outdoors, gym, doctor, food, camping, travel,
+  family, friends, shopping, cleaning, pet, music). SVGs are
+  sourced from [unDraw](https://undraw.co/) and re-mapped so every
+  fill resolves to a `--fb-deco-*` CSS variable (`accent`,
+  `accent-2`, `dark`, `grey`, `skin`, `light`) — themable per tile,
+  per member, or globally via a HA theme. A handful of scenes
+  (`friends`, `beer`, `fishing`) ship with per-theme overrides where
+  the defaults under-read. Tile height decides the layout: ≥ 120 px
+  gets a full-bleed banner; 56–120 px gets a corner badge at
+  bottom-right that scales 4:3 with the tile (capped at 96×72);
+  shorter/compact tiles stay plain. Pure client-side, deterministic,
+  offline. **No fallback** — when no keyword matches, the tile
+  renders plainly. Override per event with `[FB:theme=<key>]`, or
+  suppress with `[FB:theme=none]`. Add new themes by dropping a
+  themable SVG into `frontend/icons/events/`.
 - **Progress card celebration** — when a member's daily progress ring
   hits 100% the ring briefly pulses with a glow and a small confetti
-  burst, drawing attention to the "all done" moment. Animation is
-  suppressed for users with `prefers-reduced-motion: reduce`.
-
-### Changed
-- Config-entry version bumped to **2**. Existing v1 entries are
-  migrated automatically on first start: every list item in
-  `entry.options` becomes a subentry with a stable `unique_id`.
-  Migration is idempotent.
-- YAML configuration still works and is now **upserted** into
-  sub-items by stable identity. Sub-items you added via the UI
-  without a YAML twin are preserved across re-imports.
-- **Trash auto-chore reminders are now opt-in for new entries.** When
-  you add a trash sub-item via the UI, both *empty bins* and *kliko
-  at the curb* default to **off**; tick the boxes you want. Existing
-  YAML / migrated v1 entries keep the legacy default-on behaviour
-  via a migration carve-out.
-- The classic options flow is now an informational placeholder; all
-  configuration moved to sub-items.
-
-### Fixed
-- Locked the per-member progress logic for shared chores with a new
-  test (`tests/test_progress.py`): completing a shared chore credits
-  *every* member listed on the chore. Test prevents future
-  regressions.
-
-## [0.3.0] - 2026-05-02
-
-### Added
+  burst, drawing attention to the "all done" moment without adding any
+  extra noise to the rest of the dashboard. Animation is suppressed
+  for users with `prefers-reduced-motion: reduce`.
 - **Meal planning Phase 2.5** — AI-assisted dinner suggestion. New
   `meal_planner` config block (cuisines, pantry staples, restrictions,
   per-weekday overrides, optional shopping list target) drives a
@@ -93,6 +90,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   colors. Optional — auto-contrast text keeps any palette readable.
 
 ### Changed
+- **Subentry migration.** Config-entry version bumped to **2**.
+  Existing v1 entries are migrated automatically on first start: every
+  list item in `entry.options` becomes a subentry with a stable
+  `unique_id`. Migration is idempotent.
+- YAML configuration still works and is now **upserted** into
+  sub-items by stable identity. Sub-items you added via the UI
+  without a YAML twin are preserved across re-imports.
+- **Trash auto-chore reminders are opt-in for new entries.** When you
+  add a trash sub-item via the UI, both *empty bins* and *kliko at
+  the curb* default to **off**; tick the boxes you want. Existing
+  YAML / migrated v1 entries keep the legacy default-on behaviour
+  via a migration carve-out.
+- The classic options flow is now an informational placeholder; all
+  configuration moved to sub-items.
 - **Calendar styling** — events are larger, rounder and friendlier on
   a wall-mounted tablet. Event font size is view-scoped via a
   `--fb-event-font` CSS variable (Day ~1.05em → 2 weeks ~0.82em, with
@@ -115,6 +126,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   renders in its configured `trash[].color` straight from
   `configuration.yaml`. The default color was simplified to a single
   pastel grey (`#B8B8B8`); override per type via `trash[].color`.
+
+### Fixed
+- Locked the per-member progress logic for shared chores with a new
+  test (`tests/test_progress.py`): completing a shared chore now has
+  guardrails ensuring it credits *every* member listed on the chore.
+  No code change — the existing fan-out already does this; the test
+  prevents future regressions.
 
 ## [0.2.1] - 2026-04-29
 

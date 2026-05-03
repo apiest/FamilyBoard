@@ -80,6 +80,7 @@ PLATFORMS: list[Platform] = [
 
 # (resource_id, filename) — registered as Lovelace module resources
 _FRONTEND_RESOURCES: list[tuple[str, str]] = [
+    ("familyboard_event_themes", "event-themes.js"),
     ("familyboard_card", "familyboard-chores-card.js"),
     ("familyboard_filter_card", "familyboard-filter-card.js"),
     ("familyboard_view_card", "familyboard-view-card.js"),
