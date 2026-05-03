@@ -72,6 +72,52 @@ resource URL bookkeeping. **Always deploy the JS file before restarting HA**;
 the SW caches 404s, which produces "Custom element doesn't exist" errors that
 survive cache-busting hashes.
 
+### Event-decoration SVGs (unDraw)
+
+Themed event tiles use full-color illustrations from
+[unDraw](https://undraw.co/) under
+`custom_components/familyboard/frontend/icons/events/<theme>.svg`. Raw
+unDraw downloads are **not** drop-in: they ship a hardcoded purple/pink
+palette and a page-background fill. Convert them so each color role
+resolves to a `--fb-deco-*` CSS variable:
+
+- **Drop** page-bg fills (`#f0f0f0`, `#f2f2f2`, `#fff6f6`).
+- **Map** purple `#6c63ff` → `var(--fb-deco-accent, #6c63ff)`, pink
+  `#ff6584`/`#fd6584` → `--fb-deco-accent-2`, navy/charcoal family
+  (`#2f2e41`, `#3f3d56`, `#535461`, `#090814`, …) → `--fb-deco-dark`,
+  greys (`#ccc`, `#cacaca`, `#d6d6e3`, `#e4e4e4`, `#e6e6e6`, …) →
+  `--fb-deco-grey`, skin tones (`#a0616a`, `#ed9da0`, `#ffb6b6`,
+  `#ffb7b7`, `#ffb8b8`, `#ffb9b9`, `#fdb4b4`, …) → `--fb-deco-skin`,
+  white → `--fb-deco-light`.
+- **Preserve** `xmlns:xlink` whenever any `xlink:*` attribute remains
+  in the body — stripping it produces a parse error in the browser.
+- Keep `viewBox`; drop `role`/`artist`/`source` attributes; collapse
+  whitespace.
+
+After conversion, `grep -oE 'fill="#[0-9a-fA-F]+"' file.svg | sort -u`
+should return **nothing** (every fill is now a `var(...)` reference,
+or part of a `<linearGradient>` stop in `<defs>` which is fine to
+leave literal).
+
+Wiring a new theme:
+
+1. Add a `<key>: ["nl_keyword", "en_keyword", …]` entry to
+   `frontend/event-themes.js`. Insertion order = priority. Tokenizer
+   splits on non-alphanumeric chars, so multi-word phrases must be
+   single tokens (use `daagse` not `4-daagse`).
+2. Drop the converted SVG at `frontend/icons/events/<key>.svg`.
+3. Add `"<key>"` to `EXPECTED_THEMES` in `tests/test_event_themes.py`
+   plus a routing assertion (real-world title → key).
+4. Run `pytest tests/test_event_themes.py` (must stay green).
+5. `scp` the JS + SVG to the Pi. Bump the `?v=N` query string on the
+   `fetch()` call in `familyboard-calendar-card.js` only when the SW
+   needs to be busted across all SVGs.
+
+Per-theme palette overrides live in the calendar card CSS as
+`.fb-event-deco[data-fb-deco="<key>"] { --fb-deco-…: …; }`. Use
+sparingly — only when the global defaults under-read on a typical
+member tile.
+
 ## Testing
 
 - `pytest` with fixtures in `tests/conftest.py`.

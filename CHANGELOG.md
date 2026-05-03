@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-03
+
 ### Added
 - **Calendar category in sub-item forms.** Member, Extra calendar and
   Shared calendar sub-items now expose a `category` dropdown
@@ -17,20 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `meal_calendar:` and `meal_planner:` keys have been folded into a
   single `meals:` block (with `calendar:` nested inside). Reads cleaner
   and matches the singleton sub-item.
-
-### Changed
-- **Meal weekday override sub-item is now self-explanatory.** Renamed
-  the entry type to *Meal weekday override* and added a description
-  explaining that the note is appended to the AI prompt and
-  `max_minutes` overrides the planner default for that one day.
-
-### Deprecated
-- Top-level `meal_calendar:` and `meal_planner:` YAML keys still work
-  but emit a deprecation warning. Migrate to the `meals:` block.
-
-## [0.3.0] - 2026-05-02
-
-### Added
 - **Subentry-based configuration.** Members, extra calendars, shared
   calendars, shared chores, trash sensors, the meal planner and
   per-weekday meal overrides are now individual *sub-items* on the
@@ -111,6 +99,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   colors. Optional — auto-contrast text keeps any palette readable.
 
 ### Changed
+- **Meal weekday override sub-item is now self-explanatory.** Renamed
+  the entry type to *Meal weekday override* and added a description
+  explaining that the note is appended to the AI prompt and
+  `max_minutes` overrides the planner default for that one day.
+- **Member filter merged into the progress card.** `familyboard-progress-card`
+  now accepts `filter_entity` + `selectable: true`; each tile becomes a
+  button that writes to the filter `select`, and the selected member's
+  name gets a 2 px underline in the member's color (every tile is
+  underlined when the filter is `Alles`). Tile DOM was reordered so
+  the member name sits above the ring. The default dashboard strategy
+  uses this built-in filter and no longer renders a separate
+  `familyboard-filter-card` row, freeing the side stack for countdown
+  + reminders. The standalone filter card remains fully supported for
+  hand-built dashboards.
 - **Subentry migration.** Config-entry version bumped to **2**.
   Existing v1 entries are migrated automatically on first start: every
   list item in `entry.options` becomes a subentry with a stable
@@ -154,6 +156,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guardrails ensuring it credits *every* member listed on the chore.
   No code change — the existing fan-out already does this; the test
   prevents future regressions.
+
+### Deprecated
+- Top-level `meal_calendar:` and `meal_planner:` YAML keys still work
+  but emit a deprecation warning. Migrate to the `meals:` block.
 
 ## [0.2.1] - 2026-04-29
 
