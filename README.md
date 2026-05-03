@@ -336,8 +336,23 @@ layout, alongside core or third-party cards.
 |-----------|-----------------|-------------|
 | `custom:familyboard-chores-card` | `entity`, `filter_entity`, `view_entity`, `members_entity` | Sorted chore list with member filter |
 | `custom:familyboard-calendar-card` | `members_entity`, calendar entity_ids | Calendar timeline view |
-| `custom:familyboard-filter-card` | `filter_entity`, `members_entity` | Member filter chips |
-| `custom:familyboard-progress-card` | `entity` | Per-member progress rings |
+| `custom:familyboard-filter-card` | `filter_entity`, `members_entity` | Standalone member filter chips (alternative to the progress card's built-in filter) |
+| `custom:familyboard-progress-card` | `entity` | Per-member progress rings; with `selectable: true` + `filter_entity` the tiles double as the member filter |
+
+### Example progress card with built-in filter
+
+```yaml
+type: custom:familyboard-progress-card
+entity: sensor.familyboard_progress
+filter_entity: select.familyboard_calendar
+selectable: true
+```
+
+When `selectable: true` and `filter_entity` is set, each tile becomes a
+button that writes to the `select` entity. The selected member's tile gets
+a colored back-glow; when the filter is `Alles` (or unavailable) every tile
+glows. Clicking the sole-selected tile toggles back to `Alles`. Without
+`selectable` / `filter_entity` the card is purely a display.
 
 ### Example chores card
 

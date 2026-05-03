@@ -50,14 +50,6 @@ function _members(hass, entity) {
   return s.attributes.members;
 }
 
-function _filterCard(cfg) {
-  return {
-    type: "custom:familyboard-filter-card",
-    filter_entity: cfg.filter_entity,
-    members_entity: cfg.members_entity,
-  };
-}
-
 function _viewChips(cfg) {
   // Delegates label rendering + i18n to the dedicated view card.
   return {
@@ -89,6 +81,9 @@ function _layoutChips(cfg) {
 }
 
 function _filterCardSized(cfg) {
+  // Deprecated in the default dashboard — the progress card now exposes
+  // built-in filter chips (glow on the selected member). Kept here so a
+  // user override that explicitly invokes the helper still works.
   return {
     type: "custom:familyboard-filter-card",
     filter_entity: cfg.filter_entity,
@@ -96,6 +91,16 @@ function _filterCardSized(cfg) {
     show_alles: true,
     extra_chips: [],
     grid_options: { columns: 10, rows: 1 },
+  };
+}
+
+function _progressCardMain(cfg) {
+  return {
+    type: "custom:familyboard-progress-card",
+    entity: cfg.progress_entity,
+    filter_entity: cfg.filter_entity,
+    selectable: true,
+    grid_options: { columns: "full", rows: 2 },
   };
 }
 
@@ -353,12 +358,6 @@ function _sideStackSection(cfg) {
       date_entity: cfg.countdown_date_entity,
     });
   }
-  if (cfg.show_progress) {
-    stack.push({
-      type: "custom:familyboard-progress-card",
-      entity: cfg.progress_entity,
-    });
-  }
   if (cfg.show_chores) {
     stack.push({
       type: "conditional",
@@ -464,13 +463,12 @@ class FamilyBoardDashboardStrategy extends HTMLElement {
     const cfg = _resolveConfig(strategyConfig);
     const members = _members(hass, cfg.members_entity);
 
-    // Main section (column_span 3): chips + Agenda calendar
-    const mainCards = [
-      _filterCardSized(cfg),
-      _layoutChips(cfg),
-      _viewChips(cfg),
-      _actionChips(),
-    ];
+    // Main section (column_span 3): progress (with filter glow) + chips + Agenda calendar
+    const mainCards = [];
+    if (cfg.show_progress) mainCards.push(_progressCardMain(cfg));
+    mainCards.push(_layoutChips(cfg));
+    mainCards.push(_viewChips(cfg));
+    mainCards.push(_actionChips());
     const catChips = _categoryChips(hass);
     if (catChips) mainCards.push(catChips);
     if (cfg.show_calendar) mainCards.push(_agendaCard(cfg, members, hass));

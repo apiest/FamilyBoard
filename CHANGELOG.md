@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Member filter merged into the progress card.** `familyboard-progress-card`
+  now accepts `filter_entity` + `selectable: true`; each tile becomes a
+  button that writes to the filter `select`, and the selected member's
+  ring gets a colored back-glow (every tile glows when the filter is
+  `Alles`). Tile DOM was reordered so the member name sits above the
+  ring. The default dashboard strategy uses this built-in filter and no
+  longer renders a separate `familyboard-filter-card` row, freeing the
+  side stack for countdown + reminders. The standalone filter card
+  remains fully supported for hand-built dashboards.
+
 ## [0.3.0] - 2026-05-02
 
 ### Added

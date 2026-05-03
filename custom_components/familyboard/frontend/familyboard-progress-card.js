@@ -4,9 +4,18 @@
  * Standalone Lovelace card showing per-member chore progress as
  * circular rings with member colors, pictures, and completed/total counts.
  *
+ * Optional filter mode: when `selectable: true` AND `filter_entity` is
+ * set, each tile becomes a button that writes to the given `select`
+ * entity (typically `select.familyboard_calendar`). The selected
+ * member's tile gets a colored back-glow; when the filter equals
+ * "Alles" (or the entity is unavailable), every tile glows. Clicking
+ * the sole-selected tile toggles back to "Alles".
+ *
  * Config:
  *   type: custom:familyboard-progress-card
  *   entity: sensor.familyboard_progress
+ *   filter_entity: select.familyboard_calendar   # optional
+ *   selectable: true                              # optional, default false
  */
 
 class FamilyBoardProgressCard extends HTMLElement {
@@ -28,21 +37,42 @@ class FamilyBoardProgressCard extends HTMLElement {
   setConfig(config) {
     this._config = {
       entity: config.entity || "sensor.familyboard_progress",
+      filter_entity: config.filter_entity || null,
+      selectable: config.selectable === true,
       ...config,
     };
+    // Re-normalize after spread so a raw `selectable: "true"` string
+    // doesn't slip through as truthy-but-not-strict-true.
+    this._config.selectable = config.selectable === true;
+    this._config.filter_entity = config.filter_entity || null;
+  }
+
+  _filterActive() {
+    return Boolean(this._config.selectable && this._config.filter_entity);
+  }
+
+  _currentFilter() {
+    if (!this._filterActive() || !this._hass) return null;
+    const st = this._hass.states[this._config.filter_entity];
+    return st ? st.state : null;
   }
 
   set hass(hass) {
     this._hass = hass;
     // Only re-render when the progress sensor (or its members payload)
     // actually changed. Otherwise unrelated state updates would wipe an
-    // in-flight confetti animation.
+    // in-flight confetti animation. Filter state is included so the
+    // glow updates immediately on selection without waiting for the
+    // next coordinator tick.
     const stateObj = hass && this._config.entity
       ? hass.states[this._config.entity]
       : null;
-    const sig = stateObj
-      ? `${stateObj.state}|${JSON.stringify(stateObj.attributes.members || [])}`
+    const filterState = this._filterActive()
+      ? hass?.states?.[this._config.filter_entity]?.state || ""
       : "";
+    const sig = stateObj
+      ? `${stateObj.state}|${JSON.stringify(stateObj.attributes.members || [])}|${filterState}`
+      : `|${filterState}`;
     if (sig !== this._lastSig) {
       this._lastSig = sig;
       this._render();
@@ -83,6 +113,30 @@ class FamilyBoardProgressCard extends HTMLElement {
         align-items: center;
         gap: 6px;
         min-width: 80px;
+        padding: 4px 4px 6px;
+        position: relative;
+      }
+      .member-progress.selectable {
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .member-progress.selectable:focus-visible {
+        outline: 2px solid var(--primary-color, #4A90D9);
+        outline-offset: 2px;
+        border-radius: 8px;
+      }
+      .member-name {
+        font-size: 0.95em;
+        color: var(--primary-text-color, #e6edf3);
+        font-weight: 500;
+        text-align: center;
+        align-self: stretch;
+        padding-bottom: 4px;
+        border-bottom: 2px solid transparent;
+        transition: border-color 180ms ease;
+      }
+      .member-progress.selected .member-name {
+        border-bottom-color: var(--fb-accent-color, #4A90D9);
       }
       .ring-container {
         position: relative;
@@ -127,12 +181,6 @@ class FamilyBoardProgressCard extends HTMLElement {
         font-size: 18px;
         font-weight: 700;
         color: white;
-      }
-      .member-name {
-        font-size: 0.95em;
-        color: var(--primary-text-color, #e6edf3);
-        font-weight: 500;
-        text-align: center;
       }
       .member-count {
         font-size: 0.85em;
@@ -201,6 +249,12 @@ class FamilyBoardProgressCard extends HTMLElement {
     if (members.length === 0) {
       html += `<div class="empty">Geen leden</div>`;
     } else {
+      const filterActive = this._filterActive();
+      const currentFilter = this._currentFilter();
+      // "Alles" or unavailable filter state → every tile glows.
+      const allSelected =
+        filterActive &&
+        (!currentFilter || currentFilter === "Alles" || currentFilter === "unavailable");
       html += `<div class="progress-grid">`;
       for (const m of members) {
         const total = m.total || 0;
@@ -221,9 +275,21 @@ class FamilyBoardProgressCard extends HTMLElement {
           ? `<div class="member-presence ${presence.cls}">${this._esc(presence.label)}</div>`
           : "";
 
+        const isSelected = filterActive && (allSelected || currentFilter === m.name);
+        const tileClasses = ["member-progress"];
+        if (filterActive) tileClasses.push("selectable");
+        if (isSelected) tileClasses.push("selected");
+        const interactiveAttrs = filterActive
+          ? ` role="button" tabindex="0" data-member="${this._escAttr(m.name || "")}"`
+          : "";
+        const accentVar = isSelected
+          ? `--fb-accent-color:${this._escAttr(color)};`
+          : "";
+
         html += `
-          <div class="member-progress">
-            <div class="ring-container" data-member="${this._escAttr(m.name || "")}" style="--fb-celebrate-color:${this._escAttr(color)}">
+          <div class="${tileClasses.join(" ")}"${interactiveAttrs} style="${accentVar}">
+            <div class="member-name">${this._esc(m.name || "")}</div>
+            <div class="ring-container" data-ring-member="${this._escAttr(m.name || "")}" style="--fb-celebrate-color:${this._escAttr(color)}">
               <svg viewBox="0 0 64 64">
                 <circle class="ring-bg" cx="32" cy="32" r="${radius}" />
                 <circle class="ring-fg" cx="32" cy="32" r="${radius}"
@@ -233,7 +299,6 @@ class FamilyBoardProgressCard extends HTMLElement {
               </svg>
               <div class="ring-picture">${pictureHtml}</div>
             </div>
-            <div class="member-name">${this._esc(m.name || "")}</div>
             ${presenceHtml}
             <div class="member-count">${completed} / ${total}</div>
           </div>
@@ -244,6 +309,36 @@ class FamilyBoardProgressCard extends HTMLElement {
 
     html += `</div>`;
     this.shadowRoot.innerHTML = html;
+    this._wireTileHandlers();
+  }
+
+  _wireTileHandlers() {
+    if (!this._filterActive()) return;
+    const tiles = this.shadowRoot.querySelectorAll(".member-progress.selectable");
+    tiles.forEach((tile) => {
+      const name = tile.getAttribute("data-member");
+      if (!name) return;
+      tile.addEventListener("click", () => this._handleTileSelect(name));
+      tile.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          this._handleTileSelect(name);
+        }
+      });
+    });
+  }
+
+  _handleTileSelect(name) {
+    if (!this._hass || !this._filterActive()) return;
+    const current = this._currentFilter();
+    // Clicking the sole-selected member toggles back to "Alles".
+    const option = current === name ? "Alles" : name;
+    this._hass.callService(
+      "select",
+      "select_option",
+      { option },
+      { entity_id: this._config.filter_entity },
+    );
   }
 
   _maybeCelebrate() {
@@ -275,7 +370,7 @@ class FamilyBoardProgressCard extends HTMLElement {
     const root = this.shadowRoot;
     if (!root) return;
     const container = root.querySelector(
-      `.ring-container[data-member="${CSS.escape(name)}"]`,
+      `.ring-container[data-ring-member="${CSS.escape(name)}"]`,
     );
     if (!container) return;
     this._celebrating.add(name);
@@ -343,6 +438,16 @@ class FamilyBoardProgressCard extends HTMLElement {
     })[c]);
   }
 
+  _hexToRgba(hex, alpha) {
+    if (!hex) return `rgba(74, 144, 217, ${alpha})`;
+    const m = String(hex).replace("#", "");
+    if (m.length !== 6) return `rgba(74, 144, 217, ${alpha})`;
+    const r = parseInt(m.substring(0, 2), 16);
+    const g = parseInt(m.substring(2, 4), 16);
+    const b = parseInt(m.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
   getCardSize() {
     return 2;
   }
@@ -368,6 +473,14 @@ const PROGRESS_EDITOR_SCHEMA = [
     name: "entity",
     required: true,
     selector: { entity: { domain: "sensor" } },
+  },
+  {
+    name: "filter_entity",
+    selector: { entity: { domain: "select" } },
+  },
+  {
+    name: "selectable",
+    selector: { boolean: {} },
   },
 ];
 
