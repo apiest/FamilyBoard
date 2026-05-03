@@ -7,20 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- **Member filter merged into the progress card.** `familyboard-progress-card`
-  now accepts `filter_entity` + `selectable: true`; each tile becomes a
-  button that writes to the filter `select`, and the selected member's
-  ring gets a colored back-glow (every tile glows when the filter is
-  `Alles`). Tile DOM was reordered so the member name sits above the
-  ring. The default dashboard strategy uses this built-in filter and no
-  longer renders a separate `familyboard-filter-card` row, freeing the
-  side stack for countdown + reminders. The standalone filter card
-  remains fully supported for hand-built dashboards.
-
-## [0.3.0] - 2026-05-02
+## [0.3.0] - 2026-05-03
 
 ### Added
+- **Calendar category in sub-item forms.** Member, Extra calendar and
+  Shared calendar sub-items now expose a `category` dropdown
+  (`personal` / `work` / `school` / `hobby` / `family` / `other`),
+  matching the YAML schema. Previously the field was YAML-only, so
+  UI users couldn't tag their calendars for the category filter chips.
+- **Consolidated `meals:` YAML block.** The legacy top-level
+  `meal_calendar:` and `meal_planner:` keys have been folded into a
+  single `meals:` block (with `calendar:` nested inside). Reads cleaner
+  and matches the singleton sub-item.
+- **Subentry-based configuration.** Members, extra calendars, shared
+  calendars, shared chores, trash sensors, the meal planner and
+  per-weekday meal overrides are now individual *sub-items* on the
+  integration page (Settings → Devices & Services → FamilyBoard →
+  click ➕). Add, edit and remove each one separately instead of
+  navigating one giant options-flow form.
 - **Decorative event illustrations.** Opt-in `event_images: true`
   card option on `custom:familyboard-calendar-card` inlines a
   full-color illustration into timed event tiles, picked from the
@@ -95,6 +99,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   colors. Optional — auto-contrast text keeps any palette readable.
 
 ### Changed
+- **Meal weekday override sub-item is now self-explanatory.** Renamed
+  the entry type to *Meal weekday override* and added a description
+  explaining that the note is appended to the AI prompt and
+  `max_minutes` overrides the planner default for that one day.
+- **Member filter merged into the progress card.** `familyboard-progress-card`
+  now accepts `filter_entity` + `selectable: true`; each tile becomes a
+  button that writes to the filter `select`, and the selected member's
+  name gets a 2 px underline in the member's color (every tile is
+  underlined when the filter is `Alles`). Tile DOM was reordered so
+  the member name sits above the ring. The default dashboard strategy
+  uses this built-in filter and no longer renders a separate
+  `familyboard-filter-card` row, freeing the side stack for countdown
+  + reminders. The standalone filter card remains fully supported for
+  hand-built dashboards.
+- **Subentry migration.** Config-entry version bumped to **2**.
+  Existing v1 entries are migrated automatically on first start: every
+  list item in `entry.options` becomes a subentry with a stable
+  `unique_id`. Migration is idempotent.
+- YAML configuration still works and is now **upserted** into
+  sub-items by stable identity. Sub-items you added via the UI
+  without a YAML twin are preserved across re-imports.
+- **Trash auto-chore reminders are opt-in for new entries.** When you
+  add a trash sub-item via the UI, both *empty bins* and *kliko at
+  the curb* default to **off**; tick the boxes you want. Existing
+  YAML / migrated v1 entries keep the legacy default-on behaviour
+  via a migration carve-out.
+- The classic options flow is now an informational placeholder; all
+  configuration moved to sub-items.
 - **Calendar styling** — events are larger, rounder and friendlier on
   a wall-mounted tablet. Event font size is view-scoped via a
   `--fb-event-font` CSS variable (Day ~1.05em → 2 weeks ~0.82em, with
@@ -124,6 +156,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guardrails ensuring it credits *every* member listed on the chore.
   No code change — the existing fan-out already does this; the test
   prevents future regressions.
+
+### Deprecated
+- Top-level `meal_calendar:` and `meal_planner:` YAML keys still work
+  but emit a deprecation warning. Migrate to the `meals:` block.
 
 ## [0.2.1] - 2026-04-29
 

@@ -33,6 +33,7 @@ from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
 from .const import (
+    CONFIG_ENTRY_VERSION,
     DAY_END_ENTITY,
     DAY_START_ENTITY,
     DEVICE_IDENTIFIER,
@@ -62,6 +63,7 @@ from .helpers import (
 )
 from .reminder import ReminderManager
 from .schemas import OPTIONS_SCHEMA, default_options
+from .subentries import compose_conf, migrate_options_to_subentries
 from .trash import TrashChoreManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -136,20 +138,73 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload the integration when options change."""
+    """Reload the integration when options or subentries change."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate a v1 entry (list-shaped options) into v2 subentries.
+
+    For each member / extra calendar / shared calendar / shared chore /
+    trash sensor / meal planner / day override in the legacy options
+    dict we synthesize a matching subentry with a stable ``unique_id``.
+    The migration is idempotent: subentries with a matching
+    ``(subentry_type, unique_id)`` are left alone, so re-running is
+    safe. After migration the legacy lists are stripped from
+    ``entry.options`` so subentries become the single source of truth.
+    """
+    if entry.version >= CONFIG_ENTRY_VERSION:
+        return True
+
+    options = dict(entry.options or {})
+    created = await migrate_options_to_subentries(hass, entry, options)
+    _LOGGER.info(
+        "FamilyBoard: migrated entry %s to v%d (%d subentries created)",
+        entry.entry_id,
+        CONFIG_ENTRY_VERSION,
+        created,
+    )
+
+    # Clear legacy list-shaped options so compose_conf is the only source.
+    cleaned = {
+        k: v
+        for k, v in options.items()
+        if k
+        not in {
+            "members",
+            "trash",
+            "shared_calendars",
+            "shared_chores",
+            "meal_calendar",
+            "meal_planner",
+        }
+    }
+    hass.config_entries.async_update_entry(
+        entry, options=cleaned, version=CONFIG_ENTRY_VERSION
+    )
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up FamilyBoard from a config entry."""
     fb = hass.data.setdefault(DOMAIN, {})
 
-    # Prefer entry.options; fall back to YAML for legacy installs that haven't
-    # been re-imported yet.
-    if entry.options:
-        conf = dict(entry.options)
-    else:
-        conf = fb.get("yaml_config") or default_options()
+    # If async_step_import created this entry just now, upsert the YAML
+    # block into subentries before composing conf.
+    pending_yaml = fb.pop("pending_yaml_import", None)
+    if pending_yaml:
+        from .subentries import upsert_yaml as _upsert_yaml
+
+        await _upsert_yaml(hass, entry, pending_yaml)
+
+    # v2: rebuild conf from subentries. Fall back to legacy options /
+    # YAML for the brief window after install before any subentry
+    # exists (e.g. user just clicked "Add integration" but hasn't added
+    # a member yet).
+    conf = compose_conf(entry)
+    if not conf.get("members") and not entry.subentries:
+        legacy = dict(entry.options) if entry.options else None
+        conf = legacy or fb.get("yaml_config") or default_options()
 
     # Make sure required keys exist
     for key in ("members", "trash", "shared_calendars", "shared_chores"):

@@ -1083,6 +1083,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
         min-height: 24px;
       }
       .fb-grid.cols-2 .fb-allday-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .fb-grid.cols-3 .fb-allday-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .fb-grid.cols-5 .fb-allday-row { grid-template-columns: repeat(5, minmax(0, 1fr)); }
       .fb-grid.cols-7 .fb-allday-row { grid-template-columns: repeat(7, minmax(0, 1fr)); }
       .fb-grid.cols-14 .fb-allday-row { grid-template-columns: repeat(14, minmax(60px, 1fr)); }

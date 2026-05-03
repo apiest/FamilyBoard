@@ -84,13 +84,52 @@ resources API — no manual URL bookkeeping required.
 ### YAML alternative
 
 YAML configuration is still supported as a bootstrap: any `familyboard:`
-block in `configuration.yaml` is imported into the config entry on first
-start and refreshed on subsequent restarts. Edits made through the
-options flow take precedence until the YAML changes again.
+block in `configuration.yaml` is imported into the integration on first
+start and **upserted** into sub-items on every subsequent restart.
+Sub-items you added via the UI without a YAML twin are preserved.
 
 ## Configuration
 
-### Full example
+FamilyBoard is configured entirely through the **integration page**:
+
+> Settings → Devices & Services → FamilyBoard → click the **➕** in the
+> *Sub-items* section.
+
+Each member, extra calendar, shared calendar, shared chore, trash
+sensor and the meal planner is its own **sub-item** (HA *subentry*).
+Add or remove them individually from that page; each appears as a
+separate row with edit / delete controls.
+
+Available sub-item types:
+
+| Sub-item | Cardinality | Description |
+|----------|-------------|-------------|
+| Member | 0..N | A person — primary calendar, color, optional `person`/notify, chore lists. |
+| Extra calendar | 0..N (linked to a member) | Additional calendar for an existing member. |
+| Shared calendar | 0..N | A calendar shared by multiple members. |
+| Shared chore | 0..N | A todo list shared by multiple members. |
+| Trash collection | 0..N (one per type) | A `sensor.*` with the next collection date as state. |
+| Meal planner | 0..1 | Singleton — meal calendar + AI suggestion settings. |
+| Meal weekday override | 0..7 (one per weekday) | Tweak the AI meal prompt for one specific weekday (e.g. "Thursday: training at 6pm — keep it quick"). Optionally overrides the planner's default max prep time for that day. |
+
+> The picker hides *Meal planner* once one exists and *Meal weekday
+> override* once all seven weekdays are covered.
+
+> **Trash auto-chores are now opt-in for new entries.** When you add a
+> trash sub-item via the UI, both *empty bins* and *kliko at the
+> curb* reminder chores default to **off**. Tick the boxes you want
+> created. Existing YAML / migrated v1 entries keep the legacy
+> default-on behaviour.
+
+### YAML alternative (still supported)
+
+YAML is still imported on every HA start as a bootstrap; each item is
+upserted into the matching sub-item by stable identity (member name,
+calendar entity, trash type, …). Sub-items added via the UI without a
+YAML twin are preserved across re-imports. Removing an item from YAML
+does **not** auto-delete the matching sub-item — clean up via the UI.
+
+### Full YAML example
 
 ```yaml
 familyboard:
@@ -139,8 +178,8 @@ familyboard:
     - entity: todo.groceries
       members: [Person_1, Person_2]
       name: Groceries
-  meal_calendar: calendar.meals
-  meal_planner:
+  meals:
+    calendar: calendar.meals
     ai_task_entity: ai_task.gpt_oss_20b   # required for suggest_meal
     shopping_list: todo.groceries         # optional; ingredients land here on accept
     cuisines: [Nederlands, Italiaans, Mexicaans, Aziatisch, Mediterraans]
@@ -208,8 +247,8 @@ If you prefer the original saturated palette (`#4A90D9`, `#27AE60`,
 | `label` | no | from sensor | Display label |
 | `color` | no | `#B8B8B8` | Color (hex) |
 | `emoji` | no | per-type default | Emoji prefix |
-| `reminder_bins` | no | `true` | When `false`, skip the auto-created "prullenbakken legen" chore (evening before collection). |
-| `reminder_kliko` | no | `true` | When `false`, skip the auto-created "kliko aan de weg" chore (morning of collection). |
+| `reminder_bins` | no | `true` (YAML) / `false` (UI) | When `false`, skip the auto-created "prullenbakken legen" chore (evening before collection). UI-added trash items default to `false`; YAML keeps the legacy default-on behaviour. |
+| `reminder_kliko` | no | `true` (YAML) / `false` (UI) | When `false`, skip the auto-created "kliko aan de weg" chore (morning of collection). UI-added trash items default to `false`; YAML keeps the legacy default-on behaviour. |
 
 ### Shared calendar options
 
@@ -231,14 +270,15 @@ If you prefer the original saturated palette (`#4A90D9`, `#27AE60`,
 | `name` | no | — | Display name |
 | `color` | no | — | Color (hex) |
 
-### Meal planner options (`meal_planner`)
+### Meals (`meals`)
 
 Drives the AI dinner-suggestion service
-(`familyboard.suggest_meal`). All keys except `ai_task_entity` are
-optional; defaults are baked in.
+(`familyboard.suggest_meal`) and the meal calendar. All keys except
+`ai_task_entity` are optional; defaults are baked in.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
+| `calendar` | no | — | `calendar.*` entity that holds the meal events |
 | `ai_task_entity` | yes | — | `ai_task.*` entity that backs `ai_task.generate_data` |
 | `shopping_list` | no | — | `todo.*` entity ingredients are appended to on accept |
 | `cuisines` | no | NL/IT/MX/Asian/Med/ME | List of cuisines for variation hints. **User list replaces the default fully when set.** |
@@ -247,6 +287,11 @@ optional; defaults are baked in.
 | `max_minutes` | no | `30` | Maximum total prep time hint |
 | `day_overrides` | no | `{}` | Per-weekday tweaks. Keys are lowercase English weekday names. Each entry may set `note` and/or `max_minutes`. |
 | `extra_notes` | no | `""` | Free-form text appended at the end of the prompt |
+
+> **Deprecated:** the legacy top-level `meal_calendar:` and
+> `meal_planner:` keys are still accepted but emit a deprecation
+> warning. Migrate to a single `meals:` block (with `calendar:` nested
+> inside).
 
 ## Entities created
 
