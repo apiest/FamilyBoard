@@ -40,6 +40,8 @@ from homeassistant.helpers import selector
 import voluptuous as vol
 
 from .const import (
+    CALENDAR_CATEGORIES,
+    DEFAULT_CALENDAR_CATEGORY,
     SUBENTRY_EXTRA_CALENDAR,
     SUBENTRY_MEAL_DAY_OVERRIDE,
     SUBENTRY_MEAL_PLANNER,
@@ -420,6 +422,17 @@ def _members_sel(member_names: list[str]) -> selector.Selector:
     )
 
 
+def _category_sel() -> selector.Selector:
+    """Return a single-select dropdown of calendar categories."""
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=list(CALENDAR_CATEGORIES),
+            mode=selector.SelectSelectorMode.DROPDOWN,
+            translation_key="calendar_category",
+        )
+    )
+
+
 def _strip_empties(data: dict[str, Any]) -> dict[str, Any]:
     """Drop keys whose value is None or an empty string/list."""
     out: dict[str, Any] = {}
@@ -450,8 +463,11 @@ class MemberSubentryFlow(ConfigSubentryFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Show the create form."""
-        return await self._show(user_input, existing=None)
+        """Show the form (handles both add and reconfigure submissions)."""
+        existing = None
+        if self.source == config_entries.SOURCE_RECONFIGURE:
+            existing = dict(self._get_reconfigure_subentry().data)
+        return await self._show(user_input, existing=existing)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -505,6 +521,10 @@ class MemberSubentryFlow(ConfigSubentryFlow):
                     "chores",
                     description={"suggested_value": d.get("chores", [])},
                 ): _entity_sel("todo", multiple=True),
+                vol.Optional(
+                    "category",
+                    default=d.get("category", DEFAULT_CALENDAR_CATEGORY),
+                ): _category_sel(),
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema)
@@ -530,8 +550,11 @@ class ExtraCalendarSubentryFlow(ConfigSubentryFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Show the create form."""
-        return await self._show(user_input, existing=None)
+        """Show the form (handles both add and reconfigure submissions)."""
+        existing = None
+        if self.source == config_entries.SOURCE_RECONFIGURE:
+            existing = dict(self._get_reconfigure_subentry().data)
+        return await self._show(user_input, existing=existing)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -589,6 +612,10 @@ class ExtraCalendarSubentryFlow(ConfigSubentryFlow):
                     "default_description",
                     description={"suggested_value": d.get("default_description", "")},
                 ): _multiline_sel(),
+                vol.Optional(
+                    "category",
+                    default=d.get("category", DEFAULT_CALENDAR_CATEGORY),
+                ): _category_sel(),
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema)
@@ -603,8 +630,11 @@ class SharedCalendarSubentryFlow(ConfigSubentryFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Show the create form."""
-        return await self._show(user_input, existing=None)
+        """Show the form (handles both add and reconfigure submissions)."""
+        existing = None
+        if self.source == config_entries.SOURCE_RECONFIGURE:
+            existing = dict(self._get_reconfigure_subentry().data)
+        return await self._show(user_input, existing=existing)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -653,6 +683,10 @@ class SharedCalendarSubentryFlow(ConfigSubentryFlow):
                     "color",
                     description={"suggested_value": d.get("color", "")},
                 ): _text_sel(),
+                vol.Optional(
+                    "category",
+                    default=d.get("category", DEFAULT_CALENDAR_CATEGORY),
+                ): _category_sel(),
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema)
@@ -664,8 +698,11 @@ class SharedChoreSubentryFlow(ConfigSubentryFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Show the create form."""
-        return await self._show(user_input, existing=None)
+        """Show the form (handles both add and reconfigure submissions)."""
+        existing = None
+        if self.source == config_entries.SOURCE_RECONFIGURE:
+            existing = dict(self._get_reconfigure_subentry().data)
+        return await self._show(user_input, existing=existing)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -743,8 +780,11 @@ class TrashSubentryFlow(ConfigSubentryFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Show the create form."""
-        return await self._show(user_input, existing=None)
+        """Show the form (handles both add and reconfigure submissions)."""
+        existing = None
+        if self.source == config_entries.SOURCE_RECONFIGURE:
+            existing = dict(self._get_reconfigure_subentry().data)
+        return await self._show(user_input, existing=existing)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -820,8 +860,16 @@ class MealPlannerSubentryFlow(ConfigSubentryFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Show the create form."""
-        return await self._show(user_input, existing=None)
+        """Show the form (handles both add and reconfigure submissions)."""
+        existing = None
+        if self.source == config_entries.SOURCE_RECONFIGURE:
+            existing = dict(self._get_reconfigure_subentry().data)
+        elif any(
+            s.subentry_type == SUBENTRY_MEAL_PLANNER
+            for s in self._get_entry().subentries.values()
+        ):
+            return self.async_abort(reason="already_configured")
+        return await self._show(user_input, existing=existing)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -928,8 +976,11 @@ class MealDayOverrideSubentryFlow(ConfigSubentryFlow):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Show the create form."""
-        return await self._show(user_input, existing=None)
+        """Show the form (handles both add and reconfigure submissions)."""
+        existing = None
+        if self.source == config_entries.SOURCE_RECONFIGURE:
+            existing = dict(self._get_reconfigure_subentry().data)
+        return await self._show(user_input, existing=existing)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -1025,26 +1076,20 @@ def supported_subentry_types(
 ) -> dict[str, dict[str, Any]]:
     """Return the subentry-type → spec dict for the integration page.
 
-    Filters out singletons / fully-saturated picks: ``meal_planner``
-    once one exists, ``meal_day_override`` when all weekdays are
-    covered, ``extra_calendar`` when no member exists yet.
+    All known types are always returned so existing subentries keep
+    their reconfigure cogwheel; the singleton / saturation guard for
+    *adding* a new one happens inside the relevant flow's
+    ``async_step_user`` (which aborts with a friendly reason).
+
+    Extra-calendar is the only true exception: it cannot be added
+    before any member exists because the form needs a parent dropdown
+    populated from existing members.
     """
-    types: dict[str, dict[str, Any]] = {}
-    for st in SUBENTRY_FLOW_REGISTRY:
-        types[st] = {"supports_reconfigure": True}
-
-    has_planner = any(
-        s.subentry_type == SUBENTRY_MEAL_PLANNER for s in entry.subentries.values()
-    )
-    if has_planner:
-        types.pop(SUBENTRY_MEAL_PLANNER, None)
-
-    if len(_existing_override_weekdays(entry)) >= len(WEEKDAYS):
-        types.pop(SUBENTRY_MEAL_DAY_OVERRIDE, None)
-
+    types: dict[str, dict[str, Any]] = {
+        st: {"supports_reconfigure": True} for st in SUBENTRY_FLOW_REGISTRY
+    }
     if not _existing_member_names(entry):
         types.pop(SUBENTRY_EXTRA_CALENDAR, None)
-
     return types
 
 

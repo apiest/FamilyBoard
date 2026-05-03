@@ -110,9 +110,9 @@ Available sub-item types:
 | Shared chore | 0..N | A todo list shared by multiple members. |
 | Trash collection | 0..N (one per type) | A `sensor.*` with the next collection date as state. |
 | Meal planner | 0..1 | Singleton — meal calendar + AI suggestion settings. |
-| Meal day override | 0..7 (one per weekday) | Per-weekday tweak (note + max minutes) for the meal planner. |
+| Meal weekday override | 0..7 (one per weekday) | Tweak the AI meal prompt for one specific weekday (e.g. "Thursday: training at 6pm — keep it quick"). Optionally overrides the planner's default max prep time for that day. |
 
-> The picker hides *Meal planner* once one exists and *Meal day
+> The picker hides *Meal planner* once one exists and *Meal weekday
 > override* once all seven weekdays are covered.
 
 > **Trash auto-chores are now opt-in for new entries.** When you add a
@@ -178,8 +178,8 @@ familyboard:
     - entity: todo.groceries
       members: [Person_1, Person_2]
       name: Groceries
-  meal_calendar: calendar.meals
-  meal_planner:
+  meals:
+    calendar: calendar.meals
     ai_task_entity: ai_task.gpt_oss_20b   # required for suggest_meal
     shopping_list: todo.groceries         # optional; ingredients land here on accept
     cuisines: [Nederlands, Italiaans, Mexicaans, Aziatisch, Mediterraans]
@@ -270,14 +270,15 @@ If you prefer the original saturated palette (`#4A90D9`, `#27AE60`,
 | `name` | no | — | Display name |
 | `color` | no | — | Color (hex) |
 
-### Meal planner options (`meal_planner`)
+### Meals (`meals`)
 
 Drives the AI dinner-suggestion service
-(`familyboard.suggest_meal`). All keys except `ai_task_entity` are
-optional; defaults are baked in.
+(`familyboard.suggest_meal`) and the meal calendar. All keys except
+`ai_task_entity` are optional; defaults are baked in.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
+| `calendar` | no | — | `calendar.*` entity that holds the meal events |
 | `ai_task_entity` | yes | — | `ai_task.*` entity that backs `ai_task.generate_data` |
 | `shopping_list` | no | — | `todo.*` entity ingredients are appended to on accept |
 | `cuisines` | no | NL/IT/MX/Asian/Med/ME | List of cuisines for variation hints. **User list replaces the default fully when set.** |
@@ -286,6 +287,11 @@ optional; defaults are baked in.
 | `max_minutes` | no | `30` | Maximum total prep time hint |
 | `day_overrides` | no | `{}` | Per-weekday tweaks. Keys are lowercase English weekday names. Each entry may set `note` and/or `max_minutes`. |
 | `extra_notes` | no | `""` | Free-form text appended at the end of the prompt |
+
+> **Deprecated:** the legacy top-level `meal_calendar:` and
+> `meal_planner:` keys are still accepted but emit a deprecation
+> warning. Migrate to a single `meals:` block (with `calendar:` nested
+> inside).
 
 ## Entities created
 

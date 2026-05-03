@@ -230,19 +230,27 @@ async def test_upsert_yaml_preserves_ui_only_subentries(
 async def test_supported_subentry_types_filters_singletons(
     hass: HomeAssistant,
 ) -> None:
-    """meal_planner is removed from the picker once one exists; same for full week."""
+    """All known types are returned so reconfigure cogwheels keep working.
+
+    Singleton / saturation guards live inside the relevant flow's
+    ``async_step_user`` (it aborts on duplicate), not at the picker
+    level. extra_calendar is still hidden when no member exists.
+    """
     entry = _make_entry(hass, version=1)
     await migrate_options_to_subentries(hass, entry, dict(entry.options))
 
     types = supported_subentry_types(entry)
-    # meal_planner already exists → not offered again.
-    assert SUBENTRY_MEAL_PLANNER not in types
+    # meal_planner stays in the dict so the existing row keeps its
+    # reconfigure cogwheel — duplicate-add is blocked inside the flow.
+    assert SUBENTRY_MEAL_PLANNER in types
+    assert types[SUBENTRY_MEAL_PLANNER]["supports_reconfigure"] is True
     # extra_calendar offered because Alice + Bob are members.
     assert SUBENTRY_EXTRA_CALENDAR in types
-    # Only thursday override exists, six other days available.
+    # Day-overrides always offered; saturation handled inside the flow.
     assert SUBENTRY_MEAL_DAY_OVERRIDE in types
 
-    # Add the remaining six weekdays.
+    # Add the remaining six weekdays — type still listed (cogwheel) but
+    # the flow's ``_show`` aborts on add.
     for wd in ("monday", "tuesday", "wednesday", "friday", "saturday", "sunday"):
         hass.config_entries.async_add_subentry(
             entry,
@@ -254,7 +262,7 @@ async def test_supported_subentry_types_filters_singletons(
             ),
         )
     types = supported_subentry_types(entry)
-    assert SUBENTRY_MEAL_DAY_OVERRIDE not in types
+    assert SUBENTRY_MEAL_DAY_OVERRIDE in types
 
 
 async def test_yaml_setup_upserts_subentries(hass: HomeAssistant) -> None:

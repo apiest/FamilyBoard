@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Calendar category in sub-item forms.** Member, Extra calendar and
+  Shared calendar sub-items now expose a `category` dropdown
+  (`personal` / `work` / `school` / `hobby` / `family` / `other`),
+  matching the YAML schema. Previously the field was YAML-only, so
+  UI users couldn't tag their calendars for the category filter chips.
+- **Consolidated `meals:` YAML block.** The legacy top-level
+  `meal_calendar:` and `meal_planner:` keys have been folded into a
+  single `meals:` block (with `calendar:` nested inside). Reads cleaner
+  and matches the singleton sub-item.
+
+### Changed
+- **Meal weekday override sub-item is now self-explanatory.** Renamed
+  the entry type to *Meal weekday override* and added a description
+  explaining that the note is appended to the AI prompt and
+  `max_minutes` overrides the planner default for that one day.
+
+### Deprecated
+- Top-level `meal_calendar:` and `meal_planner:` YAML keys still work
+  but emit a deprecation warning. Migrate to the `meals:` block.
+
 ## [0.3.0] - 2026-05-02
 
 ### Added

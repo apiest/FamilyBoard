@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "FamilyBoard",
-        "description": "FamilyBoard will be created as a singleton entry. After it is created, open it under Settings \u2192 Devices & Services \u2192 FamilyBoard \u2192 Configure to add members, trash collections and shared items."
+        "description": "FamilyBoard will be created as a singleton entry. After it is created, open it under Settings → Devices & Services → FamilyBoard → Configure to add members, trash collections and shared items."
       }
     },
     "abort": {
@@ -35,7 +35,8 @@
             "color": "Color (hex)",
             "person": "Person entity",
             "notify": "Notify target (mobile_app_*)",
-            "chores": "Chore lists"
+            "chores": "Chore lists",
+            "category": "Calendar category"
           }
         }
       }
@@ -57,7 +58,8 @@
             "entity": "Calendar entity",
             "label": "Label",
             "default_summary": "Default summary",
-            "default_description": "Default description"
+            "default_description": "Default description",
+            "category": "Calendar category"
           }
         }
       }
@@ -75,7 +77,8 @@
             "entity": "Calendar entity",
             "members": "Members",
             "name": "Name",
-            "color": "Color (hex)"
+            "color": "Color (hex)",
+            "category": "Calendar category"
           }
         }
       }
@@ -141,24 +144,28 @@
             "extra_notes": "Extra instructions (free text)"
           }
         }
+      },
+      "abort": {
+        "already_configured": "A meal planner already exists. Reconfigure that one instead of adding a new one."
       }
     },
     "meal_day_override": {
       "initiate_flow": {
-        "user": "Add weekday override",
-        "reconfigure": "Reconfigure weekday override"
+        "user": "Add meal weekday override",
+        "reconfigure": "Reconfigure meal weekday override"
       },
-      "entry_type": "Meal day override",
+      "entry_type": "Meal weekday override",
       "abort": {
         "no_weekdays_left": "All seven weekdays already have an override."
       },
       "step": {
         "user": {
           "title": "Weekday override",
+          "description": "Tweak the AI meal suggestion for one specific weekday. The note is appended to the prompt (e.g. 'Training at 6pm — keep it quick'); max prep time overrides the planner default for that day. Leave both empty to skip.",
           "data": {
             "weekday": "Weekday",
-            "note": "Note (free text)",
-            "max_minutes": "Maximum prep time (min)"
+            "note": "Note for the AI prompt",
+            "max_minutes": "Max prep time (minutes, overrides planner default)"
           }
         }
       }
@@ -166,23 +173,45 @@
   },
   "entity": {
     "calendar": {
-      "alles": { "name": "All" },
-      "trash": { "name": "Trash" }
+      "alles": {
+        "name": "All"
+      },
+      "trash": {
+        "name": "Trash"
+      }
     },
     "sensor": {
-      "chores": { "name": "Chores" },
-      "compliment": { "name": "Greeting" },
-      "meals": { "name": "Meals" },
-      "recent_meals": { "name": "Recent meals" },
-      "meal_suggestion": { "name": "Meal suggestion" },
-      "members": { "name": "Members" },
-      "progress": { "name": "Progress" }
+      "chores": {
+        "name": "Chores"
+      },
+      "compliment": {
+        "name": "Greeting"
+      },
+      "meals": {
+        "name": "Meals"
+      },
+      "recent_meals": {
+        "name": "Recent meals"
+      },
+      "meal_suggestion": {
+        "name": "Meal suggestion"
+      },
+      "members": {
+        "name": "Members"
+      },
+      "progress": {
+        "name": "Progress"
+      }
     },
     "binary_sensor": {
-      "meals_unplanned": { "name": "Meals to plan" }
+      "meals_unplanned": {
+        "name": "Meals to plan"
+      }
     },
     "select": {
-      "calendar_filter": { "name": "Calendar filter" },
+      "calendar_filter": {
+        "name": "Calendar filter"
+      },
       "view": {
         "name": "View",
         "state": {
@@ -202,29 +231,75 @@
           "agenda": "Agenda"
         }
       },
-      "event_member": { "name": "Event member" },
-      "event_calendar": { "name": "Event calendar" }
+      "event_member": {
+        "name": "Event member"
+      },
+      "event_calendar": {
+        "name": "Event calendar"
+      }
     },
     "switch": {
-      "event_all_day": { "name": "Event all day" },
-      "show_reminders": { "name": "Show reminders" },
-      "category_personal": { "name": "Personal" },
-      "category_work": { "name": "Work" },
-      "category_school": { "name": "School" },
-      "category_hobby": { "name": "Hobby" },
-      "category_family": { "name": "Family" },
-      "category_other": { "name": "Other" }
+      "event_all_day": {
+        "name": "Event all day"
+      },
+      "show_reminders": {
+        "name": "Show reminders"
+      },
+      "category_personal": {
+        "name": "Personal"
+      },
+      "category_work": {
+        "name": "Work"
+      },
+      "category_school": {
+        "name": "School"
+      },
+      "category_hobby": {
+        "name": "Hobby"
+      },
+      "category_family": {
+        "name": "Family"
+      },
+      "category_other": {
+        "name": "Other"
+      }
     },
     "text": {
-      "event_title": { "name": "Event title" },
-      "countdown_label": { "name": "Countdown label" }
+      "event_title": {
+        "name": "Event title"
+      },
+      "countdown_label": {
+        "name": "Countdown label"
+      }
     },
     "datetime": {
-      "event_start": { "name": "Event start" },
-      "event_end": { "name": "Event end" },
-      "day_start": { "name": "Day start" },
-      "day_end": { "name": "Day end" },
-      "countdown_date": { "name": "Countdown date" }
+      "event_start": {
+        "name": "Event start"
+      },
+      "event_end": {
+        "name": "Event end"
+      },
+      "day_start": {
+        "name": "Day start"
+      },
+      "day_end": {
+        "name": "Day end"
+      },
+      "countdown_date": {
+        "name": "Countdown date"
+      }
+    }
+  },
+  "selector": {
+    "calendar_category": {
+      "options": {
+        "personal": "Personal",
+        "work": "Work",
+        "school": "School",
+        "hobby": "Hobby",
+        "family": "Family",
+        "other": "Other"
+      }
     }
   },
   "services": {
