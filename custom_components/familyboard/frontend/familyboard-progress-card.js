@@ -70,9 +70,17 @@ class FamilyBoardProgressCard extends HTMLElement {
     const filterState = this._filterActive()
       ? hass?.states?.[this._config.filter_entity]?.state || ""
       : "";
+    // Include each member's person entity state so live location
+    // changes (home ↔ not_home) trigger a re-render — the progress
+    // sensor only ticks on coordinator refresh, but presence updates
+    // arrive as independent state changes on `person.*`.
+    const members = stateObj?.attributes?.members || [];
+    const presenceState = members
+      .map((m) => `${m.name || ""}=${hass?.states?.[m.person]?.state || ""}`)
+      .join(",");
     const sig = stateObj
-      ? `${stateObj.state}|${JSON.stringify(stateObj.attributes.members || [])}|${filterState}`
-      : `|${filterState}`;
+      ? `${stateObj.state}|${JSON.stringify(members)}|${filterState}|${presenceState}`
+      : `|${filterState}|${presenceState}`;
     if (sig !== this._lastSig) {
       this._lastSig = sig;
       this._render();
