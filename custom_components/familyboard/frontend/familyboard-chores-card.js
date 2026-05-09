@@ -141,18 +141,20 @@ class FamilyBoardChoresCard extends HTMLElement {
   }
 
   _filterByView(items, view) {
+    // Keys MUST mirror const.py::VIEW_OPTIONS and __init__.py::_get_view_window
+    // exactly. See `.github/copilot-instructions.md` (view ↔ chores invariant).
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     let endDate = null;
 
     if (view === "today") {
       endDate = new Date(today);
-    } else if (view === "tomorrow") {
+    } else if (view === "2_days") {
       endDate = new Date(today);
       endDate.setDate(endDate.getDate() + 1);
-    } else if (view === "today_tomorrow") {
+    } else if (view === "3_days") {
       endDate = new Date(today);
-      endDate.setDate(endDate.getDate() + 1);
+      endDate.setDate(endDate.getDate() + 2);
     } else if (view === "week") {
       endDate = new Date(today);
       endDate.setDate(endDate.getDate() + 7);

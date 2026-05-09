@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Shared chores no longer disappear from the Algemene card** when
+  `select.familyboard_view` is narrowed (e.g. `today` or `2_days`)
+  and the chore's due date falls outside that window. Shared chores
+  now bypass the view-window trim while personal chores continue
+  to honor it.
+- **Shared chores without a UID** are now deduplicated across
+  members by `(todo_entity, summary, due)` so `todo` integrations
+  that omit UIDs render one row instead of N copies on the
+  Algemene card.
+- **Frontend chores card view filter** now mirrors the canonical
+  `VIEW_OPTIONS` keys (`today`, `2_days`, `3_days`, `work_week`,
+  `week`, `two_weeks`, `month`). Previously selecting `2_days` or
+  `3_days` silently fell through to "no client-side filter".
+
+### Changed
+- A typo in `shared_chores: members:` (e.g. wrong case or unknown
+  name) now logs a single WARNING per `(entity, member)` pair
+  instead of silently dropping the chore from every card.
+- A `todo.*` entity that appears in both a member's personal
+  `chores:` list **and** in `shared_chores:` now logs a WARNING
+  at coordinator init explaining that the personal copy will
+  shadow the shared one.
+
 ## [0.3.0] - 2026-05-03
 
 ### Added

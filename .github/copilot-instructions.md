@@ -22,6 +22,15 @@ frontend build step. Target HA: 2026.4+.
   on the next restart. When adding a new options key, update both
   `schemas.OPTIONS_SCHEMA` and `_normalize_options` (the `existing=` merge
   branch) together.
+- **View ↔ chores invariant.** The `select.familyboard_view` state values
+  live in `const.py::VIEW_OPTIONS` and are interpreted by **two** pieces of
+  code that must stay in lockstep: backend `_get_view_window` /
+  `_chore_in_view` in `__init__.py`, and frontend `_filterByView` in
+  `frontend/familyboard-chores-card.js`. When you add, rename or change a
+  view key, audit all three call sites in the same change and add/extend a
+  parametric test that asserts every `VIEW_OPTIONS` key is handled. Shared
+  chores deliberately bypass the view-window trim (so the algemene card
+  always surfaces them) — preserve that carve-out when refactoring.
 
 ## Config schema (HA `configuration.yaml`)
 

@@ -858,6 +858,9 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         self._prev_active_uids: dict[str, set[str]] = {}
         self._daily_completed: dict[str, int] = {}
         self._progress_date: str = ""
+        # One-shot warning de-duplication (Phase 1 chore-filter fixes).
+        self._warned_unknown_shared_member: set[tuple[str, str]] = set()
+        self._warn_chore_entity_overlap()
         self._meal_suggestion_store: Store = Store(
             hass, MEAL_SUGGESTION_STORAGE_VERSION, MEAL_SUGGESTION_STORAGE_KEY
         )
@@ -962,6 +965,33 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         if due < view_window[0]:
             return True
         return view_window[0] <= due <= view_window[1]
+
+    def _warn_chore_entity_overlap(self) -> None:
+        """Warn once when a `todo.*` entity is listed both personal and shared.
+
+        A shared entry that also appears in a member's personal ``chores``
+        list is silently shadowed by the personal copy in the fan-out loop
+        (the personal copy lacks the ``shared`` flag, so it never reaches
+        the shared-mode card). This is a config smell — warn but do not
+        auto-correct.
+        """
+        personal_owners: dict[str, list[str]] = {}
+        for member in self.members:
+            for ent in member.get("chores", []) or []:
+                personal_owners.setdefault(ent, []).append(member["name"])
+        for shared in self.conf.get("shared_chores", []) or []:
+            ent = shared.get("entity")
+            if ent and ent in personal_owners:
+                _LOGGER.warning(
+                    "FamilyBoard: todo entity %s is listed as a shared chore "
+                    "and also appears in personal chores for %s. The personal "
+                    "copy will shadow the shared one and items may not appear "
+                    "on the shared (algemene) card. Remove %s from the "
+                    "personal chores list to fix.",
+                    ent,
+                    ", ".join(personal_owners[ent]),
+                    ent,
+                )
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch calendar events + chores; build dedup'd cross-member view."""
@@ -1151,6 +1181,18 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
                     continue
                 for mname in shared_members:
                     if mname not in result["member_chores"]:
+                        warn_key = (shared_entity, mname)
+                        if warn_key not in self._warned_unknown_shared_member:
+                            self._warned_unknown_shared_member.add(warn_key)
+                            _LOGGER.warning(
+                                "FamilyBoard: shared chore %s lists member "
+                                "%r which is not configured. Items will not "
+                                "appear on that member's card. Configured "
+                                "members: %s",
+                                shared_entity,
+                                mname,
+                                ", ".join(result["member_chores"].keys()) or "(none)",
+                            )
                         continue
                     meta = member_meta.get(mname, {})
                     existing_uids = {
@@ -1180,21 +1222,36 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
                         }
                     )
 
-        # Combine + dedup + filter by view window
+        # Combine + dedup + filter by view window. Shared chores bypass the
+        # view-window trim so the algemene card always surfaces them, even
+        # when `select.familyboard_view` is narrowed to today.
         all_chores: list[dict] = []
         for chores_list in result["member_chores"].values():
             for chore in chores_list:
-                if self._chore_in_view(chore, view_window):
+                if chore.get("shared") or self._chore_in_view(chore, view_window):
                     all_chores.append(chore)
 
-        seen_uids: set[str] = set()
+        # Dedup shared chores by UID when present, else by
+        # (entity, summary, due) so todo backends that omit UIDs still
+        # produce one row per shared item rather than N copies.
+        seen_shared_keys: set[tuple] = set()
         deduped_chores: list[dict] = []
         for chore in all_chores:
-            uid = chore.get("uid")
-            if uid and chore.get("shared") and uid in seen_uids:
-                continue
-            if uid:
-                seen_uids.add(uid)
+            if chore.get("shared"):
+                uid = chore.get("uid")
+                key = (
+                    ("uid", uid)
+                    if uid
+                    else (
+                        "fallback",
+                        chore.get("todo_entity"),
+                        chore.get("summary"),
+                        chore.get("due"),
+                    )
+                )
+                if key in seen_shared_keys:
+                    continue
+                seen_shared_keys.add(key)
             deduped_chores.append(chore)
 
         def _sort_key(chore: dict) -> tuple:
