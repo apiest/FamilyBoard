@@ -271,6 +271,89 @@ class FamilyBoardChoresCard extends HTMLElement {
     }
   }
 
+  _getClaims() {
+    if (!this._hass || !this._config.members_entity) return {};
+    const stateObj = this._hass.states[this._config.members_entity];
+    if (!stateObj) return {};
+    return stateObj.attributes.claims || {};
+  }
+
+  async _handleClaim(uid, member) {
+    if (!uid || !this._hass) return;
+    try {
+      await this._hass.callService("familyboard", "claim_chore", {
+        uid,
+        ...(member ? { member } : {}),
+      });
+    } catch (err) {
+      console.error("FamilyBoard: Failed to claim chore:", err);
+    } finally {
+      this._closeClaimPopup();
+    }
+  }
+
+  _openClaimPopup(uid, anchorEl) {
+    this._closeClaimPopup();
+    if (!this._hass || !this._config.members_entity) return;
+    const stateObj = this._hass.states[this._config.members_entity];
+    const members = stateObj?.attributes?.members || [];
+    if (!members.length) return;
+    const claims = this._getClaims();
+    const currentClaimer = claims[uid];
+
+    const popup = document.createElement("div");
+    popup.className = "claim-popup";
+    let html = `<div class="claim-popup-title">Wie pakt dit op?</div>`;
+    html += `<div class="claim-popup-actions">`;
+    for (const m of members) {
+      const isCurrent = m.name === currentClaimer;
+      html += `<button class="claim-btn${isCurrent ? " current" : ""}" data-claim-member="${this._escAttr(m.name)}" style="--fb-color: ${this._escAttr(m.color || "#4A90D9")}">${this._esc(m.name)}</button>`;
+    }
+    if (currentClaimer) {
+      html += `<button class="claim-btn release" data-claim-release="1">Vrijgeven</button>`;
+    }
+    html += `</div>`;
+    popup.innerHTML = html;
+
+    popup.addEventListener("click", (ev) => ev.stopPropagation());
+    popup.querySelectorAll("[data-claim-member]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        this._handleClaim(uid, btn.dataset.claimMember);
+      });
+    });
+    const releaseBtn = popup.querySelector("[data-claim-release]");
+    if (releaseBtn) {
+      releaseBtn.addEventListener("click", () => {
+        this._handleClaim(uid, null);
+      });
+    }
+
+    // Position popup below the anchor (claim chip), constrained to card.
+    const card = this.shadowRoot.querySelector(".card");
+    if (!card) return;
+    card.appendChild(popup);
+    this._claimPopup = popup;
+
+    // Click-away dismissal.
+    this._claimDismiss = (ev) => {
+      if (!popup.contains(ev.composedPath?.()[0])) this._closeClaimPopup();
+    };
+    setTimeout(() => {
+      this.shadowRoot.addEventListener("click", this._claimDismiss);
+    }, 0);
+  }
+
+  _closeClaimPopup() {
+    if (this._claimDismiss) {
+      this.shadowRoot.removeEventListener("click", this._claimDismiss);
+      this._claimDismiss = null;
+    }
+    if (this._claimPopup) {
+      this._claimPopup.remove();
+      this._claimPopup = null;
+    }
+  }
+
   _render() {
     // Hide card entirely when member-bound and filter excludes this member
     if (!this._isVisible()) {
@@ -493,6 +576,107 @@ class FamilyBoardChoresCard extends HTMLElement {
         font-size: 0.85em;
         color: var(--secondary-text-color, #8b949e);
       }
+      .task-row.unclaimed-shared {
+        opacity: 0.85;
+      }
+      .task-row.unclaimed-shared .task-summary {
+        font-style: italic;
+      }
+      .claim-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px dashed var(--secondary-text-color, #8b949e);
+        color: var(--secondary-text-color, #8b949e);
+        font-size: 0.78em;
+        font-weight: 600;
+        cursor: pointer;
+        margin-left: 8px;
+        flex-shrink: 0;
+        transition: background 0.15s ease, border-color 0.15s ease;
+      }
+      .claim-chip:hover {
+        background: rgba(255, 255, 255, 0.10);
+        border-color: var(--primary-text-color);
+      }
+      .claim-chip.claimed {
+        border-style: solid;
+        border-color: var(--fb-claim-color, #4A90D9);
+        background: color-mix(in srgb, var(--fb-claim-color, #4A90D9) 22%, transparent);
+        color: #fff;
+      }
+      .claim-chip .claim-avatar {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--fb-claim-color, #4A90D9);
+        color: white;
+        font-size: 10px;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-transform: uppercase;
+      }
+      .claim-chip .claim-avatar img {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        object-fit: cover;
+      }
+      .claim-popup {
+        position: absolute;
+        right: 12px;
+        top: 56px;
+        z-index: 20;
+        background: var(--ha-card-background, var(--card-background-color, #1c1f24));
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 14px;
+        padding: 10px 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+        min-width: 200px;
+      }
+      .claim-popup-title {
+        font-size: 0.85em;
+        font-weight: 600;
+        color: var(--secondary-text-color, #8b949e);
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+      .claim-popup-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .claim-btn {
+        appearance: none;
+        border: 1px solid var(--fb-color, #4A90D9);
+        background: color-mix(in srgb, var(--fb-color, #4A90D9) 18%, transparent);
+        color: #fff;
+        padding: 6px 12px;
+        border-radius: 12px;
+        font-size: 0.9em;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .claim-btn:hover {
+        background: color-mix(in srgb, var(--fb-color, #4A90D9) 35%, transparent);
+      }
+      .claim-btn.current {
+        background: var(--fb-color, #4A90D9);
+      }
+      .claim-btn.release {
+        border-color: var(--secondary-text-color, #8b949e);
+        background: transparent;
+        color: var(--secondary-text-color, #8b949e);
+      }
+      .card {
+        position: relative;
+      }
     `;
 
     let html = `<style>${style}</style><div class="card" style="--fb-member-color: ${this._escAttr(memberColor)}">`;
@@ -522,12 +706,21 @@ class FamilyBoardChoresCard extends HTMLElement {
     if (items.length === 0) {
       html += `<div class="empty">Geen taken</div>`;
     } else {
+      const claims = this._getClaims();
+      const memberLookup = {};
+      const membersStateObj = this._hass?.states?.[this._config.members_entity];
+      for (const m of (membersStateObj?.attributes?.members || [])) {
+        memberLookup[m.name] = m;
+      }
       html += `<div class="task-list">`;
       for (const item of items) {
         const isChecked = this._checkedItems.has(item.uid);
         const canCheck = item.uid && item.todo_entity;
+        const claimer = item.shared && item.uid ? (claims[item.uid] || null) : null;
+        const isUnclaimedShared = item.shared && !claimer;
         let rowClass = isChecked ? "task-row checked" : "task-row";
         if (!isChecked && this._isActive(item.start, item.end)) rowClass += " active";
+        if (isUnclaimedShared) rowClass += " unclaimed-shared";
         const checkboxClass = isChecked
           ? "checkbox checked"
           : canCheck
@@ -558,10 +751,19 @@ class FamilyBoardChoresCard extends HTMLElement {
         // For shared chores when an active member is known, show that member's avatar/color.
         // In shared-only mode we hide the badge entirely — the header already
         // says "Algemene taken" so per-row member icons add no information.
+        // When a shared chore is claimed, the claimer's identity wins so
+        // the household sees "Berry took this one".
         let badgeColor = item.color || "#4A90D9";
         let badgePic = pic;
         let badgeInitial = initial;
-        if (!sharedMode && item.shared && activeMember) {
+        if (item.shared && claimer) {
+          const meta = memberLookup[claimer];
+          if (meta) {
+            badgeColor = meta.color || badgeColor;
+            badgePic = meta.picture || "";
+            badgeInitial = (claimer || "?")[0];
+          }
+        } else if (!sharedMode && item.shared && activeMember) {
           badgeColor = activeColor;
           badgePic = activePic;
           badgeInitial = (activeMember || "?")[0];
@@ -572,6 +774,22 @@ class FamilyBoardChoresCard extends HTMLElement {
         const desc = item.description || "";
         const sharedHtml = !sharedMode && item.shared ? '<span class="shared-indicator">👥</span>' : '';
 
+        // Claim chip on shared rows. Always rendered when item.shared
+        // and item.uid is present — the only way to claim/release.
+        let claimChip = "";
+        if (item.shared && item.uid) {
+          if (claimer) {
+            const meta = memberLookup[claimer] || {};
+            const claimColor = meta.color || "#4A90D9";
+            const avatarInner = meta.picture
+              ? `<img src="${this._escAttr(meta.picture)}" alt="${this._esc(claimer[0])}">`
+              : this._esc(claimer[0]);
+            claimChip = `<span class="claim-chip claimed" data-claim-uid="${this._escAttr(item.uid)}" style="--fb-claim-color: ${this._escAttr(claimColor)}"><span class="claim-avatar">${avatarInner}</span>${this._esc(claimer)}</span>`;
+          } else {
+            claimChip = `<span class="claim-chip" data-claim-uid="${this._escAttr(item.uid)}">+ Claim</span>`;
+          }
+        }
+
         html += `
           <div class="${rowClass}" data-uid="${item.uid || ""}" style="--fb-color: ${this._escAttr(item.color || "#4A90D9")}">
             <div class="${checkboxClass}" data-uid="${item.uid || ""}" data-todo="${item.todo_entity || ""}"></div>
@@ -581,6 +799,7 @@ class FamilyBoardChoresCard extends HTMLElement {
               ${timeStr ? `<div class="${timeClass}">${overdue ? "⚠️ " : ""}${this._esc(timeStr)}</div>` : ""}
               ${desc ? `<div class="task-desc">${this._esc(desc)}</div>` : ""}
             </div>
+            ${claimChip}
           </div>
         `;
       }
@@ -601,6 +820,15 @@ class FamilyBoardChoresCard extends HTMLElement {
         const items = this._getFilteredItems();
         const item = items.find((i) => i.uid === uid);
         if (item) this._handleCheck(item);
+      });
+    });
+
+    // Claim-chip click → open picker popup.
+    this.shadowRoot.querySelectorAll("[data-claim-uid]").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const uid = el.dataset.claimUid;
+        if (uid) this._openClaimPopup(uid, el);
       });
     });
   }

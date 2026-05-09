@@ -145,11 +145,17 @@ class FamilyBoardMembersSensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self) -> dict:
         """Expose member metadata + shared calendars/chores for cards."""
         if not self.coordinator.data:
-            return {"members": [], "shared_calendars": [], "shared_chores": []}
+            return {
+                "members": [],
+                "shared_calendars": [],
+                "shared_chores": [],
+                "claims": {},
+            }
         return {
             "members": self.coordinator.data.get("members_meta", []),
             "shared_calendars": self.coordinator.data.get("shared_calendars", []),
             "shared_chores": self.coordinator.data.get("shared_chores", []),
+            "claims": self.coordinator.data.get("claims", {}),
         }
 
 

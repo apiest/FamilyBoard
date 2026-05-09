@@ -165,6 +165,13 @@ MEAL_SUGGESTION_ENTITY = "sensor.familyboard_meal_suggestion"
 MEAL_SUGGESTION_STORAGE_KEY = "familyboard_meal_suggestion"
 MEAL_SUGGESTION_STORAGE_VERSION = 1
 MEAL_SUGGESTION_PLACEHOLDER = "Geen suggestie"
+
+# Phase 4: shared-chore claim store. `{uid: member_name}` map persisted
+# across restarts. An unclaimed shared chore is visible to every listed
+# member but credits nobody on completion; a claimed chore appears only
+# on the claimer's card and credits them.
+CHORE_CLAIM_STORAGE_KEY = "familyboard_chore_claims"
+CHORE_CLAIM_STORAGE_VERSION = 1
 # Bucket thresholds used by the prompt builder when classifying recent meals.
 MEAL_AVOID_DAYS = 14  # days_since < this → "recently eaten, do not suggest"
 MEAL_FAVORITE_DAYS = 21  # days_since >= this → "forgotten favorite, inspire"

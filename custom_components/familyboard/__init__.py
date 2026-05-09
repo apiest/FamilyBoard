@@ -33,6 +33,8 @@ from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
 from .const import (
+    CHORE_CLAIM_STORAGE_KEY,
+    CHORE_CLAIM_STORAGE_VERSION,
     CONFIG_ENTRY_VERSION,
     DAY_END_ENTITY,
     DAY_START_ENTITY,
@@ -109,6 +111,12 @@ SUGGEST_MEAL_SCHEMA = vol.Schema(
 )
 ACCEPT_MEAL_SUGGESTION_SCHEMA = vol.Schema({})
 CLEAR_MEAL_SUGGESTION_SCHEMA = vol.Schema({})
+CLAIM_CHORE_SCHEMA = vol.Schema(
+    {
+        vol.Required("uid"): cv.string,
+        vol.Optional("member"): vol.Any(cv.string, None),
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +270,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await reminder_manager.async_start()
         await trash_chore_manager.async_start()
         await coordinator.async_load_meal_suggestion()
+        await coordinator.async_load_claims()
         await coordinator.async_refresh()
         await _async_check_lovelace_dependencies(hass)
 
@@ -800,6 +809,17 @@ def _async_register_services(hass: HomeAssistant, conf: dict) -> None:
         if coordinator is not None:
             await coordinator.async_set_meal_suggestion(None)
 
+    async def handle_claim_chore(call: ServiceCall) -> None:
+        """Claim a shared chore for a member, or release with member=None."""
+        coordinator: FamilyBoardCoordinator | None = hass.data.get(DOMAIN, {}).get(
+            "coordinator"
+        )
+        if coordinator is None:
+            raise HomeAssistantError("FamilyBoard coordinator is not running")
+        uid = call.data["uid"]
+        member = call.data.get("member")
+        await coordinator.async_set_claim(uid, member)
+
     hass.services.async_register(
         DOMAIN, "add_event", handle_add_event, schema=ADD_EVENT_SCHEMA
     )
@@ -826,6 +846,12 @@ def _async_register_services(hass: HomeAssistant, conf: dict) -> None:
         "clear_meal_suggestion",
         handle_clear_meal_suggestion,
         schema=CLEAR_MEAL_SUGGESTION_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "claim_chore",
+        handle_claim_chore,
+        schema=CLAIM_CHORE_SCHEMA,
     )
 
 
@@ -865,6 +891,60 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
             hass, MEAL_SUGGESTION_STORAGE_VERSION, MEAL_SUGGESTION_STORAGE_KEY
         )
         self._meal_suggestion: dict | None = None
+        # Phase 4: shared-chore claim store. Maps todo UID → member name.
+        # Unclaimed shared chores credit nobody on completion; claimed
+        # ones credit only the claimer.
+        self._claim_store: Store = Store(
+            hass, CHORE_CLAIM_STORAGE_VERSION, CHORE_CLAIM_STORAGE_KEY
+        )
+        self._claims: dict[str, str] = {}
+        self._claims_loaded: bool = False
+
+    async def async_load_claims(self) -> None:
+        """Load shared-chore claims from disk (call once at setup)."""
+        data = await self._claim_store.async_load()
+        if isinstance(data, dict):
+            # Filter to known member names so a removed member's stale
+            # claims don't silently hide a chore from everyone.
+            known = {m["name"] for m in self.members}
+            self._claims = {
+                uid: member
+                for uid, member in data.items()
+                if isinstance(uid, str) and isinstance(member, str) and member in known
+            }
+        self._claims_loaded = True
+
+    async def async_set_claim(self, uid: str, member: str | None) -> None:
+        """Set or release a claim for a shared chore UID.
+
+        ``member=None`` releases an existing claim. Triggers a
+        coordinator refresh so cards update immediately.
+        """
+        if not self._claims_loaded:
+            await self.async_load_claims()
+        if member is None:
+            self._claims.pop(uid, None)
+        else:
+            known = {m["name"] for m in self.members}
+            if member not in known:
+                raise HomeAssistantError(
+                    f"FamilyBoard: cannot claim for unknown member {member!r}. "
+                    f"Known: {sorted(known)}"
+                )
+            self._claims[uid] = member
+        # Scrub the uid from every member's "previously active" set so
+        # the next diff doesn't credit anyone for a claim change. Only
+        # actual completions (uid present last tick → absent on the
+        # claimer's list this tick) should count.
+        for prev in self._prev_active_uids.values():
+            prev.discard(uid)
+        await self._claim_store.async_save(dict(self._claims))
+        await self.async_request_refresh()
+
+    @property
+    def claims(self) -> dict[str, str]:
+        """Return a snapshot of the current `{uid: member}` claim map."""
+        return dict(self._claims)
 
     async def async_load_meal_suggestion(self) -> None:
         """Load the persisted meal suggestion from disk (call before refresh)."""
@@ -1011,6 +1091,7 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
             "alles_events_today": [],
             "shared_calendars": list(self.conf.get("shared_calendars", [])),
             "shared_chores": list(self.conf.get("shared_chores", [])),
+            "claims": dict(self._claims),
             "progress": {},
         }
 
@@ -1167,7 +1248,10 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
 
             result["member_chores"][name] = chores
 
-        # Shared chores: fan out to each listed member
+        # Shared chores: fan out to each listed member. Honor the claim
+        # store — a claimed shared chore goes only to the claimer; an
+        # unclaimed one fans out as before.
+        seen_shared_uids: set[str] = set()
         for shared in self.conf.get("shared_chores", []):
             shared_entity = shared["entity"]
             shared_members = shared["members"]
@@ -1179,7 +1263,18 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
                 todo_summary = todo_item.get("summary", "")
                 if not todo_summary:
                     continue
-                for mname in shared_members:
+                uid = todo_item.get("uid")
+                if uid:
+                    seen_shared_uids.add(uid)
+                claimed_by = self._claims.get(uid) if uid else None
+                if claimed_by and claimed_by not in result["member_chores"]:
+                    # Stale claim for a member that no longer exists —
+                    # ignore and treat as unclaimed for this tick.
+                    claimed_by = None
+                # When claimed, only the claimer sees it. When unclaimed,
+                # every listed member sees it (existing behavior).
+                target_members = [claimed_by] if claimed_by else list(shared_members)
+                for mname in target_members:
                     if mname not in result["member_chores"]:
                         warn_key = (shared_entity, mname)
                         if warn_key not in self._warned_unknown_shared_member:
@@ -1200,7 +1295,7 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
                         for c in result["member_chores"][mname]
                         if c.get("uid")
                     }
-                    if todo_item.get("uid") and todo_item["uid"] in existing_uids:
+                    if uid and uid in existing_uids:
                         continue
                     result["member_chores"][mname].append(
                         {
@@ -1213,14 +1308,25 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
                             "color": meta.get("color", "#4A90D9"),
                             "picture": meta.get("picture"),
                             "todo_entity": shared_entity,
-                            "uid": todo_item.get("uid"),
+                            "uid": uid,
                             "completed": False,
                             "shared": True,
                             "shared_members": shared_members,
                             "shared_name": shared_name,
                             "shared_color": shared_color,
+                            "claimed_by": claimed_by,
                         }
                     )
+
+        # Prune claims whose underlying UID no longer exists in any
+        # shared todo list (chore deleted or completed). Keep storage
+        # honest so the in-memory map and disk stay bounded.
+        if self._claims_loaded and self._claims:
+            stale = [uid for uid in self._claims if uid not in seen_shared_uids]
+            if stale:
+                for uid in stale:
+                    self._claims.pop(uid, None)
+                await self._claim_store.async_save(dict(self._claims))
 
         # Combine + dedup + filter by view window. Shared chores bypass the
         # view-window trim so the algemene card always surfaces them, even
@@ -1274,10 +1380,14 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
 
         for member in self.members:
             mname = member["name"]
+            # Track personal chores normally; for shared chores only
+            # credit the claimer (Phase 4 — Option A: visibility ≠ credit).
             current_uids: set[str] = {
                 c["uid"]
                 for c in result["member_chores"].get(mname, [])
-                if c.get("uid") and self._chore_in_view(c, view_window)
+                if c.get("uid")
+                and self._chore_in_view(c, view_window)
+                and (not c.get("shared") or c.get("claimed_by") == mname)
             }
             prev_uids = self._prev_active_uids.get(mname, set())
             disappeared = prev_uids - current_uids
@@ -1293,6 +1403,7 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
                     c
                     for c in result["member_chores"].get(mname, [])
                     if self._chore_in_view(c, view_window)
+                    and (not c.get("shared") or c.get("claimed_by") == mname)
                 ]
             )
             result["progress"][mname] = {

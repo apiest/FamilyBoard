@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Tap-to-claim shared chores.** Each shared chore row now has a
+  *Claim* chip; tapping it opens a small picker (`Wie pakt dit op?`)
+  with one button per family member plus *Vrijgeven*. Once a member
+  claims a chore the chip locks in their color/avatar so the
+  household sees who took it.
+- **`familyboard.claim_chore` service** — `{uid, member}` (omit
+  `member` to release). Drives the same logic as the chip; usable
+  from automations or scripts.
+- **Claim persistence.** Active claims survive HA restarts in
+  `.storage/familyboard_chore_claims`. Stale claims (UID gone, or
+  member removed from config) are pruned automatically on the next
+  coordinator refresh.
+
+### Changed
+- **BREAKING — shared-chore progress crediting.** Completing an
+  *unclaimed* shared chore no longer increments any member's
+  progress ring. Claim the chore first; on completion only the
+  claimer is credited. Previously every listed member of a shared
+  chore got +1 — that "credit everyone" behavior is replaced by
+  Option A (visibility ≠ credit). Personal chores are unchanged.
+- **Visibility of claimed shared chores** narrows to the claimer:
+  once Berry claims `todo.trash`, Sylvia and Cas no longer see it
+  on their per-member cards. The Algemene card still shows it,
+  with Berry's badge.
+
 ### Fixed
 - **Shared chores no longer disappear from the Algemene card** when
   `select.familyboard_view` is narrowed (e.g. `today` or `2_days`)

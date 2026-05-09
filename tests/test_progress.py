@@ -1,8 +1,12 @@
 """Tests for the per-member daily progress logic in the coordinator.
 
-Focus: shared chores must credit *every* member listed on the chore
-(not just one), so checking off a shared chore (e.g. "take out the
-trash") moves the progress ring for everyone responsible.
+Phase 4 (claim model) semantics:
+
+- An *unclaimed* shared chore is visible to every listed member but
+  credits **nobody** on completion.
+- A shared chore *claimed* by member X appears only on X's card and
+  credits **only** X on completion.
+- Personal chores credit their owner (unchanged).
 """
 
 from __future__ import annotations
@@ -79,6 +83,14 @@ def stub_coordinator(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(coordinator, "_fetch_meals", fake_fetch_meals)
         monkeypatch.setattr(coordinator, "_fetch_recent_meals", fake_fetch_recent_meals)
 
+        async def noop_refresh() -> None:
+            return None
+
+        # Tests drive `_async_update_data` directly; suppress the
+        # debouncer that `async_request_refresh` would otherwise leave
+        # behind as a lingering timer.
+        monkeypatch.setattr(coordinator, "async_request_refresh", noop_refresh)
+
         def set_todos(entity_id: str, items: list[dict]) -> None:
             todos[entity_id] = items
 
@@ -87,42 +99,113 @@ def stub_coordinator(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch):
     return _factory
 
 
-async def test_shared_chore_credits_every_listed_member(
+async def test_unclaimed_shared_chore_credits_nobody(
     hass: HomeAssistant, stub_coordinator
 ) -> None:
-    """Checking off a shared chore must increment progress for all listed members."""
+    """Completing an unclaimed shared chore must not bump any ring (Phase 4)."""
     coordinator, set_todos = stub_coordinator(["Alice", "Bob"])
+    await coordinator.async_load_claims()  # ensure prune path is enabled
 
-    # Tick 1: shared chore is active for both members.
+    # Tick 1: shared chore active, no claim.
     set_todos("todo.shared_trash", [{"uid": "trash-1", "summary": "Trash"}])
     result1 = await coordinator._async_update_data()
     assert result1["progress"]["Alice"]["completed"] == 0
     assert result1["progress"]["Bob"]["completed"] == 0
-    assert result1["progress"]["Alice"]["total"] == 1
-    assert result1["progress"]["Bob"]["total"] == 1
+    # Visible to both because unclaimed:
+    assert result1["progress"]["Alice"]["total"] == 0
+    assert result1["progress"]["Bob"]["total"] == 0
 
-    # Tick 2: chore is checked off — list comes back empty.
+    # Tick 2: completed.
     set_todos("todo.shared_trash", [])
     result2 = await coordinator._async_update_data()
 
-    assert result2["progress"]["Alice"]["completed"] == 1
-    assert result2["progress"]["Bob"]["completed"] == 1
-    assert result2["progress"]["Alice"]["total"] == 1
-    assert result2["progress"]["Bob"]["total"] == 1
+    assert result2["progress"]["Alice"]["completed"] == 0, (
+        "Unclaimed shared chore must not credit Alice"
+    )
+    assert result2["progress"]["Bob"]["completed"] == 0, (
+        "Unclaimed shared chore must not credit Bob"
+    )
 
 
-async def test_shared_chore_credits_only_listed_members(
+async def test_claimed_shared_chore_credits_only_claimer(
     hass: HomeAssistant, stub_coordinator
 ) -> None:
-    """A shared chore listing only Alice must not affect Bob's progress."""
-    coordinator, set_todos = stub_coordinator(["Alice"])
+    """A shared chore claimed by Alice credits only Alice on completion."""
+    coordinator, set_todos = stub_coordinator(["Alice", "Bob"])
+    await coordinator.async_load_claims()
 
-    set_todos("todo.shared_trash", [{"uid": "x", "summary": "Solo"}])
+    # Tick 1: shared chore active.
+    set_todos("todo.shared_trash", [{"uid": "trash-1", "summary": "Trash"}])
     await coordinator._async_update_data()
 
-    set_todos("todo.shared_trash", [])
-    result = await coordinator._async_update_data()
+    # Alice claims it.
+    await coordinator.async_set_claim("trash-1", "Alice")
 
-    assert result["progress"]["Alice"]["completed"] == 1
-    assert result["progress"]["Bob"]["completed"] == 0
-    assert result["progress"]["Bob"]["total"] == 0
+    # Tick 2 (after refresh triggered by claim): Alice sees it, Bob doesn't.
+    result_claim = await coordinator._async_update_data()
+    assert result_claim["progress"]["Alice"]["total"] == 1
+    assert result_claim["progress"]["Bob"]["total"] == 0
+
+    # Tick 3: completed.
+    set_todos("todo.shared_trash", [])
+    result_done = await coordinator._async_update_data()
+
+    assert result_done["progress"]["Alice"]["completed"] == 1, (
+        "Claimer should be credited on completion"
+    )
+    assert result_done["progress"]["Bob"]["completed"] == 0, (
+        "Non-claimer must not be credited"
+    )
+
+
+async def test_release_claim_restores_unclaimed_visibility(
+    hass: HomeAssistant, stub_coordinator
+) -> None:
+    """Releasing a claim brings the chore back onto every listed member's card."""
+    coordinator, set_todos = stub_coordinator(["Alice", "Bob"])
+    await coordinator.async_load_claims()
+
+    set_todos("todo.shared_trash", [{"uid": "trash-1", "summary": "Trash"}])
+    await coordinator.async_set_claim("trash-1", "Alice")
+    result_claimed = await coordinator._async_update_data()
+    assert result_claimed["progress"]["Bob"]["total"] == 0
+
+    await coordinator.async_set_claim("trash-1", None)
+    result_released = await coordinator._async_update_data()
+    # Unclaimed → visible to both, credits nobody → totals 0
+    assert result_released["progress"]["Alice"]["total"] == 0
+    assert result_released["progress"]["Bob"]["total"] == 0
+    # And the chore appears on the deduped algemene list
+    assert any(c["summary"] == "Trash" for c in result_released["all_chores_sorted"])
+
+
+async def test_claim_for_unknown_member_raises(
+    hass: HomeAssistant, stub_coordinator
+) -> None:
+    """`async_set_claim` must reject an unknown member name."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    coordinator, _ = stub_coordinator(["Alice", "Bob"])
+    await coordinator.async_load_claims()
+    with pytest.raises(HomeAssistantError):
+        await coordinator.async_set_claim("trash-1", "Charlie")
+
+
+async def test_orphan_claim_pruned_when_uid_disappears(
+    hass: HomeAssistant, stub_coordinator
+) -> None:
+    """Stale claims for UIDs no longer present are dropped from the store."""
+    coordinator, set_todos = stub_coordinator(["Alice", "Bob"])
+    await coordinator.async_load_claims()
+
+    set_todos("todo.shared_trash", [{"uid": "trash-1", "summary": "Trash"}])
+    await coordinator.async_set_claim("trash-1", "Alice")
+    await coordinator._async_update_data()
+    assert "trash-1" in coordinator.claims
+
+    # Chore vanishes (e.g. completed elsewhere).
+    set_todos("todo.shared_trash", [])
+    await coordinator._async_update_data()
+    assert "trash-1" not in coordinator.claims, (
+        "Claim for vanished UID should be pruned"
+    )

@@ -76,3 +76,28 @@ accept_meal_suggestion:
 clear_meal_suggestion:
   name: Clear meal suggestion
   description: Discard the current meal suggestion without acting on it.
+
+claim_chore:
+  name: Claim shared chore
+  description: >-
+    Assign a shared chore (todo UID) to a specific member, or release
+    the claim by passing an empty member. A claimed shared chore appears
+    only on the claimer's card and credits them on completion; an
+    unclaimed shared chore is visible to every listed member but credits
+    nobody.
+  fields:
+    uid:
+      name: Todo UID
+      description: The UID of the shared todo item to claim.
+      required: true
+      example: "abc123"
+      selector:
+        text:
+    member:
+      name: Member
+      description: >-
+        Member to claim the chore for. Leave empty (or omit) to release
+        an existing claim.
+      example: "Berry"
+      selector:
+        text:
