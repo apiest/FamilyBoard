@@ -1675,7 +1675,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
     for (let i = 0; i < numDays; i++) {
       const d = days[i];
       const isToday = this._isSameDay(d, today);
-      const timed = this._layoutOverlap(eventsByDay[i].timed);
+      const timed = this._layoutOverlap(eventsByDay[i].timed, hourHeight);
       const blocks = timed
         .map((slot) => this._renderTimedBlock(slot, d, hourHeight, startHour, endHour))
         .join("");
@@ -1745,9 +1745,17 @@ class FamilyBoardCalendarCard extends HTMLElement {
         startDate = new Date(item.start);
         endDate = item.end ? new Date(item.end) : new Date(startDate.getTime() + 30 * 60000);
       } else if (item.due) {
-        startDate = this._parseLocalDate(item.due);
-        endDate = this._addDays(startDate, 1);
-        allDay = true;
+        // CalDAV/Nextcloud may provide a full ISO datetime
+        // ("YYYY-MM-DDTHH:MM:SS+TZ"). When a time is present, render as
+        // a timed event so it appears on the calendar time grid.
+        if (item.due.length > 10) {
+          startDate = new Date(item.due);
+          endDate = new Date(startDate.getTime() + 30 * 60000);
+        } else {
+          startDate = this._parseLocalDate(item.due);
+          endDate = this._addDays(startDate, 1);
+          allDay = true;
+        }
       } else {
         continue; // no date → skip
       }
@@ -2035,21 +2043,30 @@ class FamilyBoardCalendarCard extends HTMLElement {
   }
 
   // Sweep-line overlap layout: returns [{event, col, cols}]
-  _layoutOverlap(events) {
+  // Uses visual end (accounting for min-height of 22px) so that short
+  // sequential events that would visually collide are grouped together.
+  _layoutOverlap(events, hourHeight) {
+    // Minimum visual duration in ms — matches the 22px min-height floor
+    // in _renderTimedBlock. If hourHeight is unavailable, fall back to
+    // 48px/hour (default config).
+    const pxPerMs = (hourHeight || 48) / 3600000;
+    const minVisualMs = 22 / pxPerMs;
+
     const sorted = events.slice().sort((a, b) => a.startDate - b.startDate || b.endDate - a.endDate);
     const result = [];
-    const groups = []; // active groups
     let currentGroup = [];
     let groupEnd = null;
     for (const ev of sorted) {
+      // Visual end: the later of the actual end or the end implied by min-height
+      const visualEnd = new Date(Math.max(ev.endDate.getTime(), ev.startDate.getTime() + minVisualMs));
+      ev.__visualEnd = visualEnd;
       if (currentGroup.length && groupEnd && ev.startDate >= groupEnd) {
-        // flush
         this._assignColumns(currentGroup, result);
         currentGroup = [];
         groupEnd = null;
       }
       currentGroup.push(ev);
-      if (!groupEnd || ev.endDate > groupEnd) groupEnd = ev.endDate;
+      if (!groupEnd || visualEnd > groupEnd) groupEnd = visualEnd;
     }
     if (currentGroup.length) this._assignColumns(currentGroup, result);
     return result;
@@ -2061,7 +2078,10 @@ class FamilyBoardCalendarCard extends HTMLElement {
       let placed = false;
       for (let i = 0; i < cols.length; i++) {
         const last = cols[i][cols[i].length - 1];
-        if (last.endDate <= ev.startDate) {
+        // Use visual end so short events don't get placed in the same
+        // column as a subsequent event they'd visually overlap with.
+        const lastVisualEnd = last.__visualEnd || last.endDate;
+        if (lastVisualEnd <= ev.startDate) {
           cols[i].push(ev);
           ev.__col = i;
           placed = true;
@@ -2077,6 +2097,7 @@ class FamilyBoardCalendarCard extends HTMLElement {
     for (const ev of group) {
       result.push({ event: ev, col: ev.__col, cols: total });
       delete ev.__col;
+      delete ev.__visualEnd;
     }
   }
 

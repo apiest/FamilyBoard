@@ -152,6 +152,38 @@ async def test_personal_chore_respects_view_window_trim(
     )
 
 
+async def test_personal_chore_with_caldav_datetime_due_visible(
+    hass: HomeAssistant, coordinator_factory
+) -> None:
+    """CalDAV returns due as full ISO datetime; chore must still appear."""
+    hass.states.async_set(VIEW_ENTITY, "today")
+    members = [
+        {
+            "name": "Alice",
+            "calendar": "calendar.alice",
+            "color": "#A8C8EC",
+            "extra_calendars": [],
+            "chores": ["todo.alice"],
+        }
+    ]
+    coordinator, set_todos = coordinator_factory(_base_conf(members=members))
+
+    today_iso = dt_util.now().date().isoformat()
+    # CalDAV/Nextcloud style: "YYYY-MM-DDTHH:MM:SS+TZ"
+    caldav_due = f"{today_iso}T07:00:00+02:00"
+    set_todos(
+        "todo.alice",
+        [{"uid": "caldav-today", "summary": "Tas Inpakken", "due": caldav_due}],
+    )
+
+    result = await coordinator._async_update_data()
+    summaries = [c["summary"] for c in result["all_chores_sorted"]]
+    assert "Tas Inpakken" in summaries, (
+        f"Chore with CalDAV datetime due {caldav_due!r} should appear "
+        f"with view=today; got {summaries!r}"
+    )
+
+
 async def test_shared_chore_without_uid_dedups_across_members(
     hass: HomeAssistant, coordinator_factory
 ) -> None:

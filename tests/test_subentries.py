@@ -11,6 +11,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.familyboard.const import (
     DOMAIN,
+    SUBENTRY_DISPLAY,
     SUBENTRY_EXTRA_CALENDAR,
     SUBENTRY_MEAL_DAY_OVERRIDE,
     SUBENTRY_MEAL_PLANNER,
@@ -21,6 +22,7 @@ from custom_components.familyboard.const import (
 )
 from custom_components.familyboard.subentries import (
     compose_conf,
+    display_uid,
     extra_calendar_uid,
     meal_day_override_uid,
     meal_planner_uid,
@@ -286,3 +288,41 @@ async def test_yaml_setup_upserts_subentries(hass: HomeAssistant) -> None:
     # compose_conf still produces a usable conf dict.
     conf = compose_conf(entry)
     assert {m["name"] for m in conf["members"]} == {"Alice", "Bob"}
+
+
+# ---------------------------------------------------------------------------
+# Display subentry
+# ---------------------------------------------------------------------------
+
+
+def test_compose_conf_with_display_subentry() -> None:
+    """compose_conf returns display dict when a display subentry exists."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, options={})
+    entry.add_to_hass = lambda *a: None
+    sub = ConfigSubentry(
+        data={
+            "due_today_enabled": True,
+            "due_today_color": "#00FF00",
+            "due_soon_enabled": False,
+            "due_soon_color": "#E67E22",
+            "overdue_enabled": True,
+            "overdue_color": "#FF0000",
+        },
+        subentry_type=SUBENTRY_DISPLAY,
+        title="Display",
+        unique_id=display_uid(),
+    )
+    entry.subentries = {sub.subentry_id: sub}
+    conf = compose_conf(entry)
+    assert conf["display"]["due_today_color"] == "#00FF00"
+    assert conf["display"]["due_soon_enabled"] is False
+    assert conf["display"]["overdue_color"] == "#FF0000"
+
+
+def test_compose_conf_without_display_subentry() -> None:
+    """compose_conf omits display key when no display subentry exists."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, options={})
+    entry.add_to_hass = lambda *a: None
+    entry.subentries = {}
+    conf = compose_conf(entry)
+    assert "display" not in conf

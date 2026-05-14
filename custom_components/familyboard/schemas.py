@@ -154,6 +154,18 @@ def _expand_meals_block(value: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+DISPLAY_SCHEMA = vol.Schema(
+    {
+        vol.Optional("due_today_enabled", default=True): cv.boolean,
+        vol.Optional("due_today_color", default="#3498DB"): cv.string,
+        vol.Optional("due_soon_enabled", default=True): cv.boolean,
+        vol.Optional("due_soon_color", default="#E67E22"): cv.string,
+        vol.Optional("overdue_enabled", default=True): cv.boolean,
+        vol.Optional("overdue_color", default="#E74C3C"): cv.string,
+    }
+)
+
+
 OPTIONS_SCHEMA = vol.All(
     _expand_meals_block,
     vol.Schema(
@@ -170,6 +182,7 @@ OPTIONS_SCHEMA = vol.All(
             ),
             vol.Optional("meal_calendar"): cv.entity_id,
             vol.Optional("meal_planner"): MEAL_PLANNER_SCHEMA,
+            vol.Optional("display"): DISPLAY_SCHEMA,
         }
     ),
 )

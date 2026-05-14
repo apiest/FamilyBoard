@@ -7,19 +7,30 @@ Phase 4 (claim model) semantics:
 - A shared chore *claimed* by member X appears only on X's card and
   credits **only** X on completion.
 - Personal chores credit their owner (unchanged).
+
+Progress only counts chores due today, overdue, or without a due date.
+Completed counts are derived from the persisted history log so they
+survive HA restarts.
 """
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 import pytest
 
 from custom_components.familyboard import FamilyBoardCoordinator
 
 
-def _make_conf(shared_members: list[str]) -> dict[str, Any]:
+def _make_conf(
+    shared_members: list[str],
+    *,
+    alice_chores: list[str] | None = None,
+    bob_chores: list[str] | None = None,
+) -> dict[str, Any]:
     """Build a minimal coordinator conf with one shared chore."""
     return {
         "members": [
@@ -28,14 +39,14 @@ def _make_conf(shared_members: list[str]) -> dict[str, Any]:
                 "calendar": "calendar.alice",
                 "color": "#A8C8EC",
                 "extra_calendars": [],
-                "chores": [],
+                "chores": alice_chores or [],
             },
             {
                 "name": "Bob",
                 "calendar": "calendar.bob",
                 "color": "#B5E0C2",
                 "extra_calendars": [],
-                "chores": [],
+                "chores": bob_chores or [],
             },
         ],
         "trash": [],
@@ -59,10 +70,15 @@ def stub_coordinator(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch):
     subsequent tick.
     """
 
-    def _factory(shared_members: list[str]):
-        coordinator = FamilyBoardCoordinator(hass, _make_conf(shared_members))
+    def _factory(shared_members: list[str], **conf_kwargs: Any):
+        coordinator = FamilyBoardCoordinator(
+            hass, _make_conf(shared_members, **conf_kwargs)
+        )
         # Avoid touching real meal-suggestion storage.
         coordinator._meal_suggestion = None
+        # Enable history so _record_completion fires and progress
+        # completed counts are derived from the persisted log.
+        coordinator._history_loaded = True
 
         todos: dict[str, list[dict]] = {}
 
@@ -209,3 +225,78 @@ async def test_orphan_claim_pruned_when_uid_disappears(
     assert "trash-1" not in coordinator.claims, (
         "Claim for vanished UID should be pruned"
     )
+
+
+# ---- Due-date filtering: progress only counts today / overdue / no-due ----
+
+
+async def test_future_chore_excluded_from_progress(
+    hass: HomeAssistant, stub_coordinator
+) -> None:
+    """A chore due in the future must not count in today's progress total."""
+    coordinator, set_todos = stub_coordinator([], alice_chores=["todo.alice_tasks"])
+    future = (dt_util.now().date() + timedelta(days=3)).isoformat()
+    set_todos("todo.alice_tasks", [{"uid": "a1", "summary": "Future", "due": future}])
+    result = await coordinator._async_update_data()
+
+    assert result["progress"]["Alice"]["total"] == 0
+    assert result["progress"]["Alice"]["completed"] == 0
+
+
+async def test_today_chore_counted_in_progress(
+    hass: HomeAssistant, stub_coordinator
+) -> None:
+    """A chore due today must count in today's progress total."""
+    coordinator, set_todos = stub_coordinator([], alice_chores=["todo.alice_tasks"])
+    today = dt_util.now().date().isoformat()
+    set_todos("todo.alice_tasks", [{"uid": "a1", "summary": "Today", "due": today}])
+    result = await coordinator._async_update_data()
+
+    assert result["progress"]["Alice"]["total"] == 1
+    assert result["progress"]["Alice"]["completed"] == 0
+
+
+async def test_overdue_chore_counted_in_progress(
+    hass: HomeAssistant, stub_coordinator
+) -> None:
+    """A chore due yesterday (overdue) must still count in progress."""
+    coordinator, set_todos = stub_coordinator([], alice_chores=["todo.alice_tasks"])
+    yesterday = (dt_util.now().date() - timedelta(days=1)).isoformat()
+    set_todos(
+        "todo.alice_tasks", [{"uid": "a1", "summary": "Overdue", "due": yesterday}]
+    )
+    result = await coordinator._async_update_data()
+
+    assert result["progress"]["Alice"]["total"] == 1
+    assert result["progress"]["Alice"]["completed"] == 0
+
+
+async def test_no_due_date_counted_in_progress(
+    hass: HomeAssistant, stub_coordinator
+) -> None:
+    """A chore without a due date must count in progress."""
+    coordinator, set_todos = stub_coordinator([], alice_chores=["todo.alice_tasks"])
+    set_todos("todo.alice_tasks", [{"uid": "a1", "summary": "Standing task"}])
+    result = await coordinator._async_update_data()
+
+    assert result["progress"]["Alice"]["total"] == 1
+    assert result["progress"]["Alice"]["completed"] == 0
+
+
+async def test_completed_chore_persisted_in_progress(
+    hass: HomeAssistant, stub_coordinator
+) -> None:
+    """Completing a chore should be counted from the history log."""
+    coordinator, set_todos = stub_coordinator([], alice_chores=["todo.alice_tasks"])
+    today = dt_util.now().date().isoformat()
+    set_todos("todo.alice_tasks", [{"uid": "a1", "summary": "Do it", "due": today}])
+
+    # Tick 1: chore active.
+    await coordinator._async_update_data()
+
+    # Tick 2: chore completed (disappears from todo list).
+    set_todos("todo.alice_tasks", [])
+    result = await coordinator._async_update_data()
+
+    assert result["progress"]["Alice"]["completed"] == 1
+    assert result["progress"]["Alice"]["total"] == 1  # 0 active + 1 completed

@@ -35,6 +35,10 @@ import voluptuous as vol
 from .const import (
     CHORE_CLAIM_STORAGE_KEY,
     CHORE_CLAIM_STORAGE_VERSION,
+    CHORE_HISTORY_MAX_DAYS,
+    CHORE_HISTORY_MAX_ENTRIES,
+    CHORE_HISTORY_STORAGE_KEY,
+    CHORE_HISTORY_STORAGE_VERSION,
     CONFIG_ENTRY_VERSION,
     DAY_END_ENTITY,
     DAY_START_ENTITY,
@@ -90,6 +94,7 @@ _FRONTEND_RESOURCES: list[tuple[str, str]] = [
     ("familyboard_calendar_card", "familyboard-calendar-card.js"),
     ("familyboard_progress_card", "familyboard-progress-card.js"),
     ("familyboard_countdown_card", "familyboard-countdown-card.js"),
+    ("familyboard_recent_chores_card", "familyboard-recent-chores-card.js"),
     ("familyboard_strategy", "familyboard-strategy.js"),
 ]
 
@@ -271,6 +276,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await trash_chore_manager.async_start()
         await coordinator.async_load_meal_suggestion()
         await coordinator.async_load_claims()
+        await coordinator.async_load_history()
         await coordinator.async_refresh()
         await _async_check_lovelace_dependencies(hass)
 
@@ -881,9 +887,6 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         self.members = conf["members"]
         self.reminder_manager = reminder_manager
         self.trash_chore_manager = trash_chore_manager
-        self._prev_active_uids: dict[str, set[str]] = {}
-        self._daily_completed: dict[str, int] = {}
-        self._progress_date: str = ""
         # One-shot warning de-duplication (Phase 1 chore-filter fixes).
         self._warned_unknown_shared_member: set[tuple[str, str]] = set()
         self._warn_chore_entity_overlap()
@@ -899,6 +902,19 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         )
         self._claims: dict[str, str] = {}
         self._claims_loaded: bool = False
+        # Phase 5: chore-completion history. Per-member monotonic
+        # counters (so HA recorder/statistics can produce hourly /
+        # daily / weekly aggregates — the energy-dashboard pattern)
+        # plus a bounded recent-log for the recent-completions card.
+        self._history_store: Store = Store(
+            hass, CHORE_HISTORY_STORAGE_VERSION, CHORE_HISTORY_STORAGE_KEY
+        )
+        self._completion_totals: dict[str, int] = {}
+        self._recent_completions: list[dict] = []
+        self._history_loaded: bool = False
+        # Snapshot of last tick's chores keyed by uid — lets us look
+        # up summary/owner/source when a uid disappears between ticks.
+        self._prev_chore_meta: dict[str, dict] = {}
 
     async def async_load_claims(self) -> None:
         """Load shared-chore claims from disk (call once at setup)."""
@@ -932,12 +948,6 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
                     f"Known: {sorted(known)}"
                 )
             self._claims[uid] = member
-        # Scrub the uid from every member's "previously active" set so
-        # the next diff doesn't credit anyone for a claim change. Only
-        # actual completions (uid present last tick → absent on the
-        # claimer's list this tick) should count.
-        for prev in self._prev_active_uids.values():
-            prev.discard(uid)
         await self._claim_store.async_save(dict(self._claims))
         await self.async_request_refresh()
 
@@ -945,6 +955,114 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
     def claims(self) -> dict[str, str]:
         """Return a snapshot of the current `{uid: member}` claim map."""
         return dict(self._claims)
+
+    async def async_load_history(self) -> None:
+        """Load chore-completion history from disk (call once at setup).
+
+        Storage shape::
+
+            {
+              "completion_totals": {"Berry": 12, "Sylvia": 7, ...},
+              "recent": [
+                {"ts": "2026-05-09T18:32:00+02:00",
+                 "member": "Berry" | None,
+                 "summary": "Trash",
+                 "uid": "abc123",
+                 "source": "personal|shared",
+                 "todo_entity": "todo.trash"},
+                ...
+              ]
+            }
+
+        Members no longer in config are dropped from totals so a
+        removed member doesn't haunt the dashboard.
+        """
+        data = await self._history_store.async_load()
+        known = {m["name"] for m in self.members}
+        if isinstance(data, dict):
+            totals = data.get("completion_totals") or {}
+            self._completion_totals = {
+                str(k): int(v)
+                for k, v in totals.items()
+                if isinstance(v, (int, float)) and k in known
+            }
+            recent = data.get("recent") or []
+            if isinstance(recent, list):
+                self._recent_completions = [
+                    e
+                    for e in recent
+                    if isinstance(e, dict) and e.get("ts") and e.get("summary")
+                ]
+            self._prune_recent_log()
+        for name in known:
+            self._completion_totals.setdefault(name, 0)
+        self._history_loaded = True
+
+    def _prune_recent_log(self) -> None:
+        """Trim the recent log to the configured count + age caps."""
+        if not self._recent_completions:
+            return
+        cutoff = dt_util.now() - timedelta(days=CHORE_HISTORY_MAX_DAYS)
+        kept: list[dict] = []
+        for entry in self._recent_completions:
+            try:
+                ts = dt_util.parse_datetime(entry["ts"])
+            except (TypeError, ValueError):
+                continue
+            if ts and ts >= cutoff:
+                kept.append(entry)
+        # Newest first, then cap to MAX_ENTRIES.
+        kept.sort(key=lambda e: e["ts"], reverse=True)
+        self._recent_completions = kept[:CHORE_HISTORY_MAX_ENTRIES]
+
+    async def _record_completion(
+        self,
+        *,
+        uid: str,
+        member: str | None,
+        summary: str,
+        todo_entity: str,
+        source: str,
+    ) -> None:
+        """Append a completion to the history log and bump counters.
+
+        ``member=None`` records the completion for the recent-list
+        sensor without crediting any per-member counter — used for
+        unclaimed shared chores (Option A semantics).
+        """
+        if not self._history_loaded:
+            return
+        entry = {
+            "ts": dt_util.now().isoformat(),
+            "member": member,
+            "summary": summary,
+            "uid": uid,
+            "source": source,
+            "todo_entity": todo_entity,
+        }
+        self._recent_completions.insert(0, entry)
+        self._prune_recent_log()
+        if member is not None:
+            self._completion_totals[member] = self._completion_totals.get(member, 0) + 1
+
+    async def _persist_history(self) -> None:
+        """Write counters + recent-log snapshot to disk."""
+        await self._history_store.async_save(
+            {
+                "completion_totals": dict(self._completion_totals),
+                "recent": list(self._recent_completions),
+            }
+        )
+
+    @property
+    def completion_totals(self) -> dict[str, int]:
+        """Return per-member cumulative completion counts."""
+        return dict(self._completion_totals)
+
+    @property
+    def recent_completions(self) -> list[dict]:
+        """Return the bounded recent-completions log (newest first)."""
+        return list(self._recent_completions)
 
     async def async_load_meal_suggestion(self) -> None:
         """Load the persisted meal suggestion from disk (call before refresh)."""
@@ -1025,8 +1143,13 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         if view == "week":
             return (today.isoformat(), (today + timedelta(days=7)).isoformat())
         if view == "work_week":
-            # Mon..Fri of the current week (Mon = 0)
-            monday = today - timedelta(days=today.weekday())
+            # Mon..Fri. On Sat/Sun, target the upcoming work week so
+            # "Werkweek" never collapses to a fully-past window.
+            weekday = today.weekday()  # Mon=0 .. Sun=6
+            if weekday >= 5:  # Sat/Sun → jump to next Monday
+                monday = today + timedelta(days=7 - weekday)
+            else:
+                monday = today - timedelta(days=weekday)
             friday = monday + timedelta(days=4)
             return (monday.isoformat(), friday.isoformat())
         if view == "two_weeks":
@@ -1042,9 +1165,22 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         due = chore.get("due")
         if not due:
             return True
-        if due < view_window[0]:
+        # `due` may be a date ("YYYY-MM-DD") or a full ISO datetime
+        # ("YYYY-MM-DDTHH:MM:SS+TZ"; CalDAV/Nextcloud returns the latter
+        # when a VTODO carries a time-of-day). Compare on the date prefix
+        # only — the view window is date-granular.
+        due_date = due[:10]
+        if due_date < view_window[0]:
             return True
-        return view_window[0] <= due <= view_window[1]
+        return view_window[0] <= due_date <= view_window[1]
+
+    @staticmethod
+    def _chore_due_today_or_overdue(chore: dict, today_str: str) -> bool:
+        """Return True if the chore is due today, overdue, or has no due date."""
+        due = chore.get("due")
+        if not due:
+            return True
+        return due[:10] <= today_str
 
     def _warn_chore_entity_overlap(self) -> None:
         """Warn once when a `todo.*` entity is listed both personal and shared.
@@ -1092,7 +1228,10 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
             "shared_calendars": list(self.conf.get("shared_calendars", [])),
             "shared_chores": list(self.conf.get("shared_chores", [])),
             "claims": dict(self._claims),
+            "completion_totals": dict(self._completion_totals),
+            "recent_completions": list(self._recent_completions),
             "progress": {},
+            "display": dict(self.conf.get("display", {})),
         }
 
         alles_map: dict[tuple, dict] = {}
@@ -1372,37 +1511,72 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         deduped_chores.sort(key=_sort_key)
         result["all_chores_sorted"] = deduped_chores
 
-        # Daily-progress tracking
-        if self._progress_date != today_str:
-            self._progress_date = today_str
-            self._daily_completed = {}
-            self._prev_active_uids = {}
+        # Phase 5: per-uid snapshot used to detect completions across
+        # ticks regardless of credit attribution. Covers personal,
+        # claimed-shared and unclaimed-shared chores. We pick the
+        # first occurrence of each uid (claimed shared chores only
+        # appear once anyway; unclaimed shared chores appear N times
+        # via fan-out — credit_member ends up as None either way).
+        current_chore_meta: dict[str, dict] = {}
+        for chore in deduped_chores:
+            uid = chore.get("uid")
+            if not uid:
+                continue
+            if chore.get("shared"):
+                credit_member = chore.get("claimed_by")  # None when unclaimed
+                source = "shared"
+            else:
+                credit_member = chore.get("member")
+                source = "personal"
+            current_chore_meta.setdefault(
+                uid,
+                {
+                    "summary": chore.get("summary", ""),
+                    "todo_entity": chore.get("todo_entity", ""),
+                    "credit_member": credit_member,
+                    "source": source,
+                },
+            )
+
+        if self._history_loaded and self._prev_chore_meta:
+            disappeared_uids = set(self._prev_chore_meta) - set(current_chore_meta)
+            recorded_any = False
+            for uid in disappeared_uids:
+                prev = self._prev_chore_meta[uid]
+                await self._record_completion(
+                    uid=uid,
+                    member=prev.get("credit_member"),
+                    summary=prev.get("summary", ""),
+                    todo_entity=prev.get("todo_entity", ""),
+                    source=prev.get("source", "personal"),
+                )
+                recorded_any = True
+            if recorded_any:
+                await self._persist_history()
+        self._prev_chore_meta = current_chore_meta
+
+        # Daily-progress tracking — derive completed counts from the
+        # persisted history log so they survive HA restarts.
+        today_date = now.date()
+        completed_today: dict[str, int] = {}
+        for entry in self._recent_completions:
+            member = entry.get("member")
+            if not member:
+                continue
+            ts = dt_util.parse_datetime(entry.get("ts") or "")
+            if ts and ts.date() == today_date:
+                completed_today[member] = completed_today.get(member, 0) + 1
+            elif ts and ts.date() < today_date:
+                break  # entries are newest-first; no more today entries
 
         for member in self.members:
             mname = member["name"]
-            # Track personal chores normally; for shared chores only
-            # credit the claimer (Phase 4 — Option A: visibility ≠ credit).
-            current_uids: set[str] = {
-                c["uid"]
-                for c in result["member_chores"].get(mname, [])
-                if c.get("uid")
-                and self._chore_in_view(c, view_window)
-                and (not c.get("shared") or c.get("claimed_by") == mname)
-            }
-            prev_uids = self._prev_active_uids.get(mname, set())
-            disappeared = prev_uids - current_uids
-            if disappeared:
-                self._daily_completed[mname] = self._daily_completed.get(
-                    mname, 0
-                ) + len(disappeared)
-            self._prev_active_uids[mname] = current_uids
-
-            completed = self._daily_completed.get(mname, 0)
+            completed = completed_today.get(mname, 0)
             active = len(
                 [
                     c
                     for c in result["member_chores"].get(mname, [])
-                    if self._chore_in_view(c, view_window)
+                    if self._chore_due_today_or_overdue(c, today_str)
                     and (not c.get("shared") or c.get("claimed_by") == mname)
                 ]
             )
@@ -1419,6 +1593,11 @@ class FamilyBoardCoordinator(DataUpdateCoordinator):
         result["alles_events_today"] = sorted(
             alles_map.values(), key=lambda e: e.get("start") or ""
         )
+
+        # Refresh history snapshots (they may have been mutated by
+        # _record_completion / _persist_history above).
+        result["completion_totals"] = dict(self._completion_totals)
+        result["recent_completions"] = list(self._recent_completions)
 
         if self.trash_chore_manager:
             try:

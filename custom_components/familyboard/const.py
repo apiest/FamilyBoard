@@ -21,6 +21,7 @@ SUBENTRY_SHARED_CHORE = "shared_chore"
 SUBENTRY_TRASH = "trash"
 SUBENTRY_MEAL_PLANNER = "meal_planner"
 SUBENTRY_MEAL_DAY_OVERRIDE = "meal_day_override"
+SUBENTRY_DISPLAY = "display"
 SUBENTRY_TYPES: tuple[str, ...] = (
     SUBENTRY_MEMBER,
     SUBENTRY_EXTRA_CALENDAR,
@@ -29,6 +30,7 @@ SUBENTRY_TYPES: tuple[str, ...] = (
     SUBENTRY_TRASH,
     SUBENTRY_MEAL_PLANNER,
     SUBENTRY_MEAL_DAY_OVERRIDE,
+    SUBENTRY_DISPLAY,
 )
 WEEKDAYS: tuple[str, ...] = (
     "monday",
@@ -172,6 +174,14 @@ MEAL_SUGGESTION_PLACEHOLDER = "Geen suggestie"
 # on the claimer's card and credits them.
 CHORE_CLAIM_STORAGE_KEY = "familyboard_chore_claims"
 CHORE_CLAIM_STORAGE_VERSION = 1
+
+# Phase 5: chore-completion history store. Per-member cumulative
+# counters (energy-dashboard pattern) + a bounded recent-completions
+# log for the recent-list card.
+CHORE_HISTORY_STORAGE_KEY = "familyboard_chore_history"
+CHORE_HISTORY_STORAGE_VERSION = 1
+CHORE_HISTORY_MAX_ENTRIES = 500
+CHORE_HISTORY_MAX_DAYS = 90
 # Bucket thresholds used by the prompt builder when classifying recent meals.
 MEAL_AVOID_DAYS = 14  # days_since < this → "recently eaten, do not suggest"
 MEAL_FAVORITE_DAYS = 21  # days_since >= this → "forgotten favorite, inspire"

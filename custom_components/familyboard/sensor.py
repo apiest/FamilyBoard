@@ -6,6 +6,11 @@
 - `sensor.familyboard_recent_meals` — scored recent meal titles for the picker
 - `sensor.familyboard_members`    — member metadata for cards
 - `sensor.familyboard_progress`   — per-member chore progress
+- `sensor.familyboard_completions_total_<member>` — cumulative chore
+  completions per member (Phase 5 — energy-dashboard pattern; HA
+  recorder/statistics handles all aggregation)
+- `sensor.familyboard_recent_chores` — today's count + bounded recent
+  log on attributes for the recent-completions card
 """
 
 from __future__ import annotations
@@ -13,7 +18,10 @@ from __future__ import annotations
 from datetime import timedelta
 import logging
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import (
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -21,7 +29,7 @@ from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
 )
-from homeassistant.util import dt as dt_util
+from homeassistant.util import dt as dt_util, slugify
 
 from .const import (
     DOMAIN,
@@ -52,6 +60,11 @@ async def async_setup_entry(
             FamilyBoardMealSuggestionSensor(coordinator),
             FamilyBoardMembersSensor(coordinator),
             FamilyBoardProgressSensor(coordinator),
+            FamilyBoardRecentChoresSensor(coordinator),
+            *[
+                FamilyBoardCompletionTotalSensor(coordinator, m["name"])
+                for m in conf.get("members", [])
+            ],
         ],
         True,
     )
@@ -150,12 +163,14 @@ class FamilyBoardMembersSensor(CoordinatorEntity, SensorEntity):
                 "shared_calendars": [],
                 "shared_chores": [],
                 "claims": {},
+                "display": {},
             }
         return {
             "members": self.coordinator.data.get("members_meta", []),
             "shared_calendars": self.coordinator.data.get("shared_calendars", []),
             "shared_chores": self.coordinator.data.get("shared_chores", []),
             "claims": self.coordinator.data.get("claims", {}),
+            "display": self.coordinator.data.get("display", {}),
         }
 
 
@@ -367,3 +382,81 @@ class FamilyBoardMealSuggestionSensor(CoordinatorEntity, SensorEntity):
             "ingredients": s.get("ingredients") or [],
             "generated_at": s.get("generated_at"),
         }
+
+
+class FamilyBoardCompletionTotalSensor(CoordinatorEntity, SensorEntity):
+    """Cumulative chore-completion counter for one member.
+
+    `state_class=TOTAL_INCREASING` lets HA's recorder/statistics
+    engine derive hourly/daily/weekly aggregates automatically — same
+    pattern as the energy dashboard. The state never decreases except
+    when the integration is uninstalled (history cleared).
+    """
+
+    _attr_should_poll = False
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = "tasks"
+    _attr_icon = "mdi:check-decagram"
+
+    def __init__(self, coordinator: DataUpdateCoordinator, member: str) -> None:
+        """Bind to coordinator and tag with the member name."""
+        super().__init__(coordinator)
+        self._member = member
+        slug = slugify(member)
+        self._attr_unique_id = f"familyboard_completions_total_{slug}"
+        self.entity_id = f"sensor.familyboard_completions_total_{slug}"
+        self._attr_name = f"FamilyBoard {member} chore completions"
+        self._attr_device_info = get_device_info()
+
+    @property
+    def native_value(self) -> int:
+        """Return this member's lifetime completion count."""
+        data = self.coordinator.data or {}
+        totals = data.get("completion_totals") or {}
+        return int(totals.get(self._member, 0))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Expose the member name for downstream cards."""
+        return {"member": self._member}
+
+
+class FamilyBoardRecentChoresSensor(CoordinatorEntity, SensorEntity):
+    """Today's completion count + bounded recent-completions log.
+
+    State = number of completions recorded today (so it works as a
+    quick badge). `attributes.entries` carries the last ~500 entries
+    for the recent-completions card.
+    """
+
+    _attr_should_poll = False
+    _attr_native_unit_of_measurement = "tasks"
+    _attr_icon = "mdi:history"
+    _attr_unique_id = "familyboard_recent_chores"
+    entity_id = "sensor.familyboard_recent_chores"
+    _attr_name = "FamilyBoard recent chores"
+
+    def __init__(self, coordinator: DataUpdateCoordinator) -> None:
+        """Bind to coordinator."""
+        super().__init__(coordinator)
+        self._attr_device_info = get_device_info()
+
+    def _entries(self) -> list[dict]:
+        data = self.coordinator.data or {}
+        return list(data.get("recent_completions") or [])
+
+    @property
+    def native_value(self) -> int:
+        """Return how many completions have been recorded today."""
+        today = dt_util.now().date()
+        count = 0
+        for entry in self._entries():
+            ts = dt_util.parse_datetime(entry.get("ts") or "")
+            if ts and ts.date() == today:
+                count += 1
+        return count
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Expose the recent-completions log for the card."""
+        return {"entries": self._entries()}

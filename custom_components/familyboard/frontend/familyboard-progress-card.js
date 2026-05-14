@@ -246,6 +246,43 @@ class FamilyBoardProgressCard extends HTMLElement {
           opacity: 0;
         }
       }
+      /* --- Full-screen confetti overlay --- */
+      .fb-fullscreen-confetti {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        z-index: 9999;
+        overflow: hidden;
+      }
+      .fb-confetti-piece {
+        position: absolute;
+        width: var(--fb-cs, 10px);
+        height: var(--fb-cs, 10px);
+        border-radius: 2px;
+        opacity: 0;
+        will-change: transform, opacity;
+        animation: fb-confetti-burst var(--fb-dur, 2s) ease-out forwards;
+        animation-delay: var(--fb-delay, 0s);
+      }
+      @keyframes fb-confetti-burst {
+        0%   {
+          transform: translate(0, 0) rotate(0deg) scale(1);
+          opacity: 1;
+        }
+        20%  {
+          opacity: 1;
+        }
+        100% {
+          transform:
+            translate(var(--fb-tx, 100px), var(--fb-ty, 400px))
+            rotate(var(--fb-tr, 720deg))
+            scale(0.3);
+          opacity: 0;
+        }
+      }
       @media (prefers-reduced-motion: reduce) {
         .ring-container.celebrate svg { animation: none; }
         .confetti { display: none; }
@@ -404,11 +441,107 @@ class FamilyBoardProgressCard extends HTMLElement {
       dots.push(dot);
     }
 
+    // Full-screen confetti burst from the ring's position.
+    // Delay one frame so the browser has laid out the DOM and
+    // getBoundingClientRect returns the real coordinates.
+    requestAnimationFrame(() => this._spawnFullScreenConfetti(container, color));
+
     setTimeout(() => {
       container.classList.remove("celebrate");
       for (const d of dots) d.remove();
       this._celebrating.delete(name);
-    }, 1800);
+    }, 6500);
+  }
+
+  _spawnFullScreenConfetti(origin, color) {
+    // Get the ring's viewport position to use as the burst origin.
+    const rect = origin.getBoundingClientRect();
+    const ox = rect.left + rect.width / 2;
+    const oy = rect.top + rect.height / 2;
+
+    // Create overlay in the document body so it covers the full screen,
+    // escaping the shadow DOM and any card boundaries.
+    const overlay = document.createElement("div");
+    overlay.className = "fb-fullscreen-confetti";
+    // Inline the keyframes + styles so they work outside the shadow DOM.
+    overlay.innerHTML = `<style>
+      .fb-fullscreen-confetti {
+        position: fixed; top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        pointer-events: none; z-index: 9999; overflow: hidden;
+      }
+      .fb-confetti-piece {
+        position: absolute;
+        width: var(--fb-cs, 10px);
+        height: var(--fb-cs, 10px);
+        border-radius: 2px;
+        opacity: 0;
+        will-change: transform, opacity;
+        animation: fb-confetti-burst var(--fb-dur, 4s) cubic-bezier(.15,.8,.3,1) forwards;
+        animation-delay: var(--fb-delay, 0s);
+      }
+      @keyframes fb-confetti-burst {
+        0%   { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+        15%  { opacity: 1; }
+        60%  { opacity: 0.8; }
+        100% {
+          transform: translate(var(--fb-tx, 100px), var(--fb-ty, 600px))
+                     rotate(var(--fb-tr, 720deg)) scale(0.2);
+          opacity: 0;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .fb-confetti-piece { display: none; }
+      }
+    </style>`;
+
+    const palette = [color, "#FFD166", "#EF5777", "#A8C8EC", "#B5E0C2",
+                     "#F4C2D7", "#FFA502", "#7BED9F", "#70A1FF", "#FF6B81",
+                     "#ECCC68", "#FF4757", "#2ED573", "#5352ED"];
+    const count = 120;
+
+    for (let i = 0; i < count; i++) {
+      const piece = document.createElement("span");
+      piece.className = "fb-confetti-piece";
+
+      // Burst in all directions, slightly biased upward.
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.8;
+      const speed = 250 + Math.random() * 700;
+      const tx = Math.cos(angle) * speed;
+      // Gravity: pieces arc up then drift down.
+      const ty = Math.sin(angle) * speed + 400 + Math.random() * 600;
+      const rot = (Math.random() * 1800 - 900).toFixed(0);
+      const size = 6 + Math.random() * 12;
+      const dur = 3.5 + Math.random() * 2.5;
+      const delay = Math.random() * 0.5;
+
+      piece.style.left = `${ox}px`;
+      piece.style.top = `${oy}px`;
+      piece.style.setProperty("--fb-tx", `${tx.toFixed(0)}px`);
+      piece.style.setProperty("--fb-ty", `${ty.toFixed(0)}px`);
+      piece.style.setProperty("--fb-tr", `${rot}deg`);
+      piece.style.setProperty("--fb-cs", `${size.toFixed(0)}px`);
+      piece.style.setProperty("--fb-dur", `${dur.toFixed(1)}s`);
+      piece.style.setProperty("--fb-delay", `${delay.toFixed(2)}s`);
+      piece.style.background = palette[i % palette.length];
+      // Mix rectangles, circles, and thin streamers.
+      const shape = Math.random();
+      if (shape > 0.65) {
+        piece.style.borderRadius = "50%";
+      } else if (shape > 0.35) {
+        // Thin streamer
+        piece.style.width = `${(3 + Math.random() * 4).toFixed(0)}px`;
+        piece.style.height = `${(12 + Math.random() * 16).toFixed(0)}px`;
+        piece.style.borderRadius = "1px";
+      }
+
+      overlay.appendChild(piece);
+    }
+
+    document.body.appendChild(overlay);
+
+    // Clean up after the longest animation completes.
+    setTimeout(() => overlay.remove(), 7000);
   }
 
   _presenceFor(personEntity) {

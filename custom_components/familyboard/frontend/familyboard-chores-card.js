@@ -24,7 +24,10 @@ class FamilyBoardChoresCard extends HTMLElement {
   connectedCallback() {
     // Re-render every 30s so "NU" badge appears/disappears as time passes
     if (!this._tickTimer) {
-      this._tickTimer = setInterval(() => this._render(), 30000);
+      this._tickTimer = setInterval(() => {
+        if (this._claimPopup) return;
+        this._render();
+      }, 30000);
     }
   }
 
@@ -78,6 +81,10 @@ class FamilyBoardChoresCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    // Don't blow away the shadow DOM while the claim popup is open
+    // — _render() rewrites innerHTML on the .card root, which would
+    // detach the popup before the user can pick a member.
+    if (this._claimPopup) return;
     this._render();
   }
 
@@ -159,10 +166,19 @@ class FamilyBoardChoresCard extends HTMLElement {
       endDate = new Date(today);
       endDate.setDate(endDate.getDate() + 7);
     } else if (view === "work_week") {
-      // Mon..Fri of current week
-      endDate = new Date(today);
-      const dow = (today.getDay() + 6) % 7; // Mon=0
-      endDate.setDate(today.getDate() - dow + 4);
+      // Mon..Fri. On Sat/Sun, jump to next week's Mon..Fri so the
+      // window isn't fully in the past. Mirrors __init__.py
+      // _get_view_window (view ↔ chores invariant).
+      const dow = today.getDay(); // 0=Sun..6=Sat
+      const isoDow = (dow + 6) % 7; // 0=Mon..6=Sun
+      let monday = new Date(today);
+      if (isoDow >= 5) {
+        monday.setDate(today.getDate() + (7 - isoDow));
+      } else {
+        monday.setDate(today.getDate() - isoDow);
+      }
+      endDate = new Date(monday);
+      endDate.setDate(monday.getDate() + 4);
     } else if (view === "two_weeks") {
       endDate = new Date(today);
       endDate.setDate(endDate.getDate() + 14);
@@ -176,7 +192,10 @@ class FamilyBoardChoresCard extends HTMLElement {
     return items.filter((item) => {
       if (!item.due) return true; // No due date → always shown
       try {
-        const due = new Date(item.due + "T00:00:00");
+        // Accept either "YYYY-MM-DD" (Google Tasks, all-day VTODO) or a
+        // full ISO datetime (CalDAV/Nextcloud VTODO with a time). Slice
+        // to the date prefix so view filtering is date-granular.
+        const due = new Date(item.due.slice(0, 10) + "T00:00:00");
         // Overdue items are always shown
         if (due < today) return true;
         return due <= endDate;
@@ -202,7 +221,7 @@ class FamilyBoardChoresCard extends HTMLElement {
   _formatDue(dueStr) {
     if (!dueStr) return null;
     try {
-      const due = new Date(dueStr + "T00:00:00");
+      const due = new Date(dueStr.slice(0, 10) + "T00:00:00");
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const tomorrow = new Date(today);
@@ -216,21 +235,42 @@ class FamilyBoardChoresCard extends HTMLElement {
   }
 
   _isOverdue(dueStr) {
-    if (!dueStr) return false;
+    return this._urgency(dueStr) === "overdue";
+  }
+
+  /**
+   * Return urgency tier for a due string:
+   *  - "overdue"  — datetime: >1h past due; date-only: day after due date
+   *  - "due-soon" — datetime: at/past due time within 1h; date-only: on due date
+   *  - null       — not urgent
+   */
+  _urgency(dueStr) {
+    if (!dueStr) return null;
     try {
-      const due = new Date(dueStr + "T00:00:00");
       const now = new Date();
+      if (dueStr.length > 10) {
+        // Datetime due (CalDAV)
+        const due = new Date(dueStr);
+        if (isNaN(due.getTime())) return null;
+        if (now >= new Date(due.getTime() + 3600000)) return "overdue";
+        if (now >= due) return "due-soon";
+        return null;
+      }
+      // Date-only due
+      const dueDate = new Date(dueStr.slice(0, 10) + "T00:00:00");
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      return due < today;
+      if (dueDate < today) return "overdue";
+      if (dueDate.getTime() === today.getTime()) return "due-soon";
+      return null;
     } catch (e) {
-      return false;
+      return null;
     }
   }
 
   _isDueToday(dueStr) {
     if (!dueStr) return false;
     try {
-      const due = new Date(dueStr + "T00:00:00");
+      const due = new Date(dueStr.slice(0, 10) + "T00:00:00");
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       return due.getTime() === today.getTime();
@@ -384,6 +424,16 @@ class FamilyBoardChoresCard extends HTMLElement {
     const activeColor = activeMemberMeta?.color || memberColor;
     const activePic = activeMemberMeta?.picture || memberPic;
 
+    // Read display config from members sensor
+    const _ms = this._hass?.states?.[this._config.members_entity];
+    const _disp = _ms?.attributes?.display || {};
+    const dueTodayEnabled = _disp.due_today_enabled !== false;
+    const dueSoonEnabled = _disp.due_soon_enabled !== false;
+    const overdueEnabled = _disp.overdue_enabled !== false;
+    const dueTodayColor = _disp.due_today_color || "#3498DB";
+    const dueSoonColor = _disp.due_soon_color || "#E67E22";
+    const overdueColor = _disp.overdue_color || "#E74C3C";
+
     const style = `
       :host {
         display: block;
@@ -500,8 +550,42 @@ class FamilyBoardChoresCard extends HTMLElement {
         text-overflow: ellipsis;
       }
       .task-time.overdue {
-        color: #E74C3C;
+        color: ${overdueColor};
         font-weight: 600;
+      }
+      .task-time.due-soon {
+        color: ${dueSoonColor};
+        font-weight: 600;
+      }
+      .task-row.overdue {
+        background: color-mix(in srgb, ${overdueColor} 8%, transparent);
+        border-left: 3px solid ${overdueColor};
+        border-radius: 6px;
+        padding-left: 8px;
+      }
+      .task-row.overdue .task-summary {
+        font-weight: 700;
+        color: ${overdueColor};
+      }
+      .task-row.due-soon {
+        background: color-mix(in srgb, ${dueSoonColor} 8%, transparent);
+        border-left: 3px solid ${dueSoonColor};
+        border-radius: 6px;
+        padding-left: 8px;
+      }
+      .task-row.due-soon .task-summary {
+        font-weight: 700;
+        color: ${dueSoonColor};
+      }
+      .task-row.due-today {
+        background: color-mix(in srgb, ${dueTodayColor} 6%, transparent);
+        border-left: 3px solid ${dueTodayColor};
+        border-radius: 6px;
+        padding-left: 8px;
+      }
+      .task-row.due-today .task-summary {
+        font-weight: 600;
+        color: ${dueTodayColor};
       }
       .task-row.active {
         background: color-mix(in srgb, var(--fb-color, #4A90D9) 18%, transparent);
@@ -718,8 +802,12 @@ class FamilyBoardChoresCard extends HTMLElement {
         const canCheck = item.uid && item.todo_entity;
         const claimer = item.shared && item.uid ? (claims[item.uid] || null) : null;
         const isUnclaimedShared = item.shared && !claimer;
+        const itemUrgency = !isChecked ? this._urgency(item.due) : null;
         let rowClass = isChecked ? "task-row checked" : "task-row";
         if (!isChecked && this._isActive(item.start, item.end)) rowClass += " active";
+        if (itemUrgency === "overdue" && overdueEnabled) rowClass += " overdue";
+        else if (itemUrgency === "due-soon" && dueSoonEnabled) rowClass += " due-soon";
+        else if (!isChecked && this._isDueToday(item.due) && dueTodayEnabled) rowClass += " due-today";
         if (isUnclaimedShared) rowClass += " unclaimed-shared";
         const checkboxClass = isChecked
           ? "checkbox checked"
@@ -730,9 +818,17 @@ class FamilyBoardChoresCard extends HTMLElement {
         const startTime = this._formatTime(item.start);
         const endTime = this._formatTime(item.end);
         const dueStr = this._formatDue(item.due);
-        const overdue = this._isOverdue(item.due);
+        const urgency = this._urgency(item.due);
+        const overdue = urgency === "overdue";
+        const dueSoon = urgency === "due-soon";
         const isToday = this._isDueToday(item.due);
         const isActive = !isChecked && this._isActive(item.start, item.end);
+
+        // Extract time-of-day from the due string when it carries one
+        // (CalDAV/Nextcloud: "YYYY-MM-DDTHH:MM:SS+TZ").
+        const dueTime = item.due && item.due.length > 10
+          ? this._formatTime(item.due)
+          : null;
 
         // Build display: time + date (skip date if today)
         let timeStr = "";
@@ -740,11 +836,13 @@ class FamilyBoardChoresCard extends HTMLElement {
           timeStr = `${startTime} – ${endTime}`;
         } else if (startTime) {
           timeStr = startTime;
+        } else if (dueTime) {
+          timeStr = dueTime;
         }
         if (dueStr && !isToday) {
           timeStr = timeStr ? `${timeStr} · 📅 ${dueStr}` : `📅 ${dueStr}`;
         }
-        const timeClass = overdue ? "task-time overdue" : "task-time";
+        const timeClass = overdue ? "task-time overdue" : dueSoon ? "task-time due-soon" : "task-time";
 
         const initial = (item.member || "?")[0];
         const pic = item.picture || "";
@@ -793,10 +891,10 @@ class FamilyBoardChoresCard extends HTMLElement {
         html += `
           <div class="${rowClass}" data-uid="${item.uid || ""}" style="--fb-color: ${this._escAttr(item.color || "#4A90D9")}">
             <div class="${checkboxClass}" data-uid="${item.uid || ""}" data-todo="${item.todo_entity || ""}"></div>
-            ${sharedMode ? "" : `<div class="badge" style="background: ${this._escAttr(badgeColor)}">${badgeContent}</div>`}
+            ${sharedMode || this._config.member ? "" : `<div class="badge" style="background: ${this._escAttr(badgeColor)}">${badgeContent}</div>`}
             <div class="task-content">
               <div class="task-summary">${this._esc(item.summary || "")}${isActive ? '<span class="live-pill">NU</span>' : ''}${sharedHtml}</div>
-              ${timeStr ? `<div class="${timeClass}">${overdue ? "⚠️ " : ""}${this._esc(timeStr)}</div>` : ""}
+              ${timeStr ? `<div class="${timeClass}">${overdue ? "⚠️ " : dueSoon ? "⏰ " : ""}${this._esc(timeStr)}</div>` : ""}
               ${desc ? `<div class="task-desc">${this._esc(desc)}</div>` : ""}
             </div>
             ${claimChip}

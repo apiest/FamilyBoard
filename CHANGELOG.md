@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Chore urgency styling** — chores card now highlights overdue
+  (red), due-soon (orange) and due-today (blue) rows with a tinted
+  background and colored left border. Each tier is independently
+  togglable and color-customisable via the new *Display* sub-item.
+- **Display sub-item** (singleton) — configurable urgency tier
+  toggles and accent colors. Settings → Devices & Services →
+  FamilyBoard → ➕ Display. Also available as `display:` in YAML.
+- **Confetti celebration** — the progress card fires a full-screen
+  confetti burst when a member reaches 100 % completion.
+- **Chore-completion history (energy-dashboard pattern).** Each tick
+  the coordinator now records every disappearing chore into a
+  persistent log:
+  - `sensor.familyboard_completions_total_<member>` — one cumulative
+    counter per member (`state_class: total_increasing`, unit
+    `tasks`). Works out of the box with HA's `statistics-graph`
+    card, statistics-card, energy-style aggregations and the
+    long-term statistics database for hourly/daily/weekly/monthly
+    rollups. Counter is monotonic and only resets on integration
+    uninstall.
+  - `sensor.familyboard_recent_chores` — state = today's count;
+    `attributes.entries` carries the latest 500 entries (90-day
+    cap, whichever hits first) for the new recent-list card.
+  Attribution honors the Phase 4 claim model: unclaimed shared
+  chores are logged with `member: null` and credit no counter.
+- **`custom:familyboard-recent-chores-card`** — compact list card
+  showing the most recent completions with a member-color dot,
+  source badge (Persoonlijk / Gedeeld) and a Dutch relative
+  timestamp ("net", "5 min geleden", "gisteren"…). Auto-registered
+  via Lovelace resources.
 - **Tap-to-claim shared chores.** Each shared chore row now has a
   *Claim* chip; tapping it opens a small picker (`Wie pakt dit op?`)
   with one button per family member plus *Vrijgeven*. Once a member
@@ -49,6 +78,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `3_days` silently fell through to "no client-side filter".
 
 ### Changed
+- **Progress rings count only today's chores** — rings now track
+  chores that are due today, overdue, or have no due date.
+  Previously every chore in the todo list inflated the total.
+  Completed counts are derived from the persisted history log so
+  they survive HA restarts.
 - A typo in `shared_chores: members:` (e.g. wrong case or unknown
   name) now logs a single WARNING per `(entity, member)` pair
   instead of silently dropping the chore from every card.
@@ -56,6 +90,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `chores:` list **and** in `shared_chores:` now logs a WARNING
   at coordinator init explaining that the personal copy will
   shadow the shared one.
+
+### Removed
+- **Dropped `week-planner-card`, `atomic-calendar-revive` and
+  `config-template-card` dependencies.** The dashboard strategy no
+  longer generates cards from these integrations; all calendar
+  rendering is handled by the built-in `familyboard-calendar-card`.
 
 ## [0.3.0] - 2026-05-03
 

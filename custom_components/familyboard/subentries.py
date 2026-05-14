@@ -42,6 +42,7 @@ import voluptuous as vol
 from .const import (
     CALENDAR_CATEGORIES,
     DEFAULT_CALENDAR_CATEGORY,
+    SUBENTRY_DISPLAY,
     SUBENTRY_EXTRA_CALENDAR,
     SUBENTRY_MEAL_DAY_OVERRIDE,
     SUBENTRY_MEAL_PLANNER,
@@ -92,6 +93,11 @@ def meal_planner_uid() -> str:
     return "default"
 
 
+def display_uid() -> str:
+    """Return the stable unique_id for the singleton display subentry."""
+    return "default"
+
+
 def meal_day_override_uid(weekday: str) -> str:
     """Return the stable unique_id for a meal day-override subentry."""
     return weekday.lower()
@@ -117,6 +123,7 @@ def compose_conf(entry: ConfigEntry) -> dict[str, Any]:
     meal_planner: dict[str, Any] | None = None
     meal_overrides: dict[str, dict[str, Any]] = {}
     meal_calendar: str | None = None
+    display: dict[str, Any] | None = None
 
     for sub in entry.subentries.values():
         data = dict(sub.data)
@@ -147,6 +154,8 @@ def compose_conf(entry: ConfigEntry) -> dict[str, Any]:
             if wd:
                 ov = {k: v for k, v in data.items() if k != "weekday"}
                 meal_overrides[wd] = ov
+        elif st == SUBENTRY_DISPLAY:
+            display = data
 
     # Attach extras to members
     for name, extras in extras_by_member.items():
@@ -166,6 +175,8 @@ def compose_conf(entry: ConfigEntry) -> dict[str, Any]:
         conf["meal_calendar"] = meal_calendar
     if meal_planner is not None:
         conf["meal_planner"] = meal_planner
+    if display is not None:
+        conf["display"] = display
     return conf
 
 
@@ -387,6 +398,10 @@ async def upsert_yaml(
                 meal_day_override_uid(wd),
                 ov_data,
             )
+
+    display = yaml_conf.get("display")
+    if display:
+        _upsert(SUBENTRY_DISPLAY, "Display", display_uid(), dict(display))
 
 
 # ---------------------------------------------------------------------------
@@ -1054,6 +1069,101 @@ class MealDayOverrideSubentryFlow(ConfigSubentryFlow):
         return self.async_show_form(step_id="user", data_schema=schema)
 
 
+# Default display settings — all tiers enabled with standard colors.
+DISPLAY_DEFAULTS: dict[str, Any] = {
+    "due_today_enabled": True,
+    "due_today_color": "#3498DB",
+    "due_soon_enabled": True,
+    "due_soon_color": "#E67E22",
+    "overdue_enabled": True,
+    "overdue_color": "#E74C3C",
+}
+
+
+class DisplaySubentryFlow(ConfigSubentryFlow):
+    """Add or reconfigure the singleton display-styling subentry."""
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Show the form (handles both add and reconfigure submissions)."""
+        existing = None
+        if self.source == config_entries.SOURCE_RECONFIGURE:
+            existing = dict(self._get_reconfigure_subentry().data)
+        elif any(
+            s.subentry_type == SUBENTRY_DISPLAY
+            for s in self._get_entry().subentries.values()
+        ):
+            return self.async_abort(reason="already_configured")
+        return await self._show(user_input, existing=existing)
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Edit form pre-filled from the existing subentry data."""
+        existing = self._get_reconfigure_subentry()
+        return await self._show(user_input, existing=dict(existing.data))
+
+    async def _show(
+        self,
+        user_input: dict[str, Any] | None,
+        existing: dict[str, Any] | None,
+    ) -> SubentryFlowResult:
+        """Build the display-config schema and process submissions."""
+        entry = self._get_entry()
+        if user_input is not None:
+            data = {
+                "due_today_enabled": user_input.get("due_today_enabled", True),
+                "due_today_color": (
+                    user_input.get("due_today_color")
+                    or DISPLAY_DEFAULTS["due_today_color"]
+                ).strip(),
+                "due_soon_enabled": user_input.get("due_soon_enabled", True),
+                "due_soon_color": (
+                    user_input.get("due_soon_color")
+                    or DISPLAY_DEFAULTS["due_soon_color"]
+                ).strip(),
+                "overdue_enabled": user_input.get("overdue_enabled", True),
+                "overdue_color": (
+                    user_input.get("overdue_color") or DISPLAY_DEFAULTS["overdue_color"]
+                ).strip(),
+            }
+            if existing is None:
+                return self.async_create_entry(
+                    title="Display", data=data, unique_id=display_uid()
+                )
+            return self.async_update_and_abort(
+                entry,
+                self._get_reconfigure_subentry(),
+                data=data,
+                title="Display",
+                unique_id=display_uid(),
+            )
+
+        d = {**DISPLAY_DEFAULTS, **(existing or {})}
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    "due_today_enabled", default=d["due_today_enabled"]
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    "due_today_color", default=d["due_today_color"]
+                ): _text_sel(),
+                vol.Optional(
+                    "due_soon_enabled", default=d["due_soon_enabled"]
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    "due_soon_color", default=d["due_soon_color"]
+                ): _text_sel(),
+                vol.Optional(
+                    "overdue_enabled", default=d["overdue_enabled"]
+                ): selector.BooleanSelector(),
+                vol.Optional("overdue_color", default=d["overdue_color"]): _text_sel(),
+            }
+        )
+        return self.async_show_form(step_id="user", data_schema=schema)
+
+
 # ---------------------------------------------------------------------------
 # Registry: maps subentry_type → flow class. Consumed by the parent
 # ConfigFlow's ``async_get_supported_subentry_types``.
@@ -1067,6 +1177,7 @@ SUBENTRY_FLOW_REGISTRY: dict[str, type[ConfigSubentryFlow]] = {
     SUBENTRY_TRASH: TrashSubentryFlow,
     SUBENTRY_MEAL_PLANNER: MealPlannerSubentryFlow,
     SUBENTRY_MEAL_DAY_OVERRIDE: MealDayOverrideSubentryFlow,
+    SUBENTRY_DISPLAY: DisplaySubentryFlow,
 }
 
 
@@ -1095,7 +1206,9 @@ def supported_subentry_types(
 
 # Backwards-compat re-export so callers can import everything from one place.
 __all__ = [
+    "DISPLAY_DEFAULTS",
     "SUBENTRY_FLOW_REGISTRY",
+    "DisplaySubentryFlow",
     "ExtraCalendarSubentryFlow",
     "MealDayOverrideSubentryFlow",
     "MealPlannerSubentryFlow",
@@ -1104,6 +1217,7 @@ __all__ = [
     "SharedChoreSubentryFlow",
     "TrashSubentryFlow",
     "compose_conf",
+    "display_uid",
     "extra_calendar_uid",
     "meal_day_override_uid",
     "meal_planner_uid",

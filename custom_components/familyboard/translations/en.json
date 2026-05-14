@@ -169,6 +169,30 @@
           }
         }
       }
+    },
+    "display": {
+      "initiate_flow": {
+        "user": "Add display settings",
+        "reconfigure": "Reconfigure display settings"
+      },
+      "entry_type": "Display",
+      "step": {
+        "user": {
+          "title": "Display settings",
+          "description": "Toggle urgency tiers and customise their accent colors.",
+          "data": {
+            "due_today_enabled": "Show 'due today' styling",
+            "due_today_color": "Due today color",
+            "due_soon_enabled": "Show 'due soon' styling",
+            "due_soon_color": "Due soon color",
+            "overdue_enabled": "Show 'overdue' styling",
+            "overdue_color": "Overdue color"
+          }
+        }
+      },
+      "abort": {
+        "already_configured": "Display settings already exist. Reconfigure the existing entry instead."
+      }
     }
   },
   "entity": {

@@ -169,6 +169,30 @@
           }
         }
       }
+    },
+    "display": {
+      "initiate_flow": {
+        "user": "Weergave-instellingen toevoegen",
+        "reconfigure": "Weergave-instellingen bewerken"
+      },
+      "entry_type": "Weergave",
+      "step": {
+        "user": {
+          "title": "Weergave-instellingen",
+          "description": "Schakel urgentieniveaus in/uit en pas de accentkleuren aan.",
+          "data": {
+            "due_today_enabled": "Toon 'vandaag'-stijl",
+            "due_today_color": "Kleur vandaag",
+            "due_soon_enabled": "Toon 'bijna verlopen'-stijl",
+            "due_soon_color": "Kleur bijna verlopen",
+            "overdue_enabled": "Toon 'verlopen'-stijl",
+            "overdue_color": "Kleur verlopen"
+          }
+        }
+      },
+      "abort": {
+        "already_configured": "Weergave-instellingen bestaan al. Bewerk de bestaande instellingen."
+      }
     }
   },
   "entity": {

@@ -54,9 +54,12 @@ FamilyBoard doesn't ask my family to change how they function; it changes the en
 - **Cross-member "Alles" calendar** — deduplicated event stream with multi-member markers (one event, multiple colored borders).
 - **Trash collection calendar** — surfaces configured `sensor.*` collection dates as all-day events, optionally with auto-generated chores.
 - **Chores sensor** — combined per-member list of `todo.*` items, sorted overdue → upcoming → no-date, optionally cross-matched with calendar tasks for start/end times.
-- **Per-member progress sensor** — daily completion tracking with color rings.
+- **Urgency styling** — overdue (red), due-soon (orange) and due-today (blue) chore rows are highlighted with a tinted background and colored border. Each tier can be toggled off or recolored via the *Display* sub-item.
+- **Per-member progress sensor** — daily completion tracking with color rings. Full-screen confetti celebration on 100 % completion.
 - **Interactive snooze reminders** — actionable mobile_app notifications scheduled at task start time, with persistence across HA restarts and away-aware delivery.
-- **Custom Lovelace cards** — composable building blocks: `chores`, `calendar`, `filter`, `progress`, `countdown`. Each takes its own config; users can mix them into any dashboard.
+- **Custom Lovelace cards** — composable building blocks: `chores`, `calendar`, `filter`, `progress`, `countdown`, `recent-chores`. Each takes its own config; users can mix them into any dashboard.
+- **Tap-to-claim shared chores** — claim a shared chore from the chores card or via the `familyboard.claim_chore` service; only the claimer is credited on completion.
+- **Chore-completion history (energy-dashboard pattern)** — per-member `total_increasing` counters (`sensor.familyboard_completions_total_<member>`, unit `tasks`) feed into HA's recorder/statistics so the stock `statistics-graph` card produces hourly/daily/weekly/monthly chore charts. A bounded recent log (`sensor.familyboard_recent_chores`) drives the new `custom:familyboard-recent-chores-card`.
 - **Calendar category filter** — tag each calendar with a category (`personal`, `work`, `school`, `hobby`, `family`, `shared`, `other`); the dashboard renders one toggle chip per category in use, so you can hide the work calendar with one tap. Toggle state survives restarts.
 - **Add-event form entities** — built-in `select`, `text`, `switch` and `datetime` entities power a "create event" form with cascading member → calendar pickers.
 - **Event countdown** — kiosk-editable countdown to a single target date (label + date), rendered by `custom:familyboard-countdown-card`. Auto-hides when no label is set and self-clears the day after the event.
@@ -111,6 +114,7 @@ Available sub-item types:
 | Trash collection | 0..N (one per type) | A `sensor.*` with the next collection date as state. |
 | Meal planner | 0..1 | Singleton — meal calendar + AI suggestion settings. |
 | Meal weekday override | 0..7 (one per weekday) | Tweak the AI meal prompt for one specific weekday (e.g. "Thursday: training at 6pm — keep it quick"). Optionally overrides the planner's default max prep time for that day. |
+| Display | 0..1 | Singleton — toggle urgency tiers (due today / due soon / overdue) on or off and customise their accent colors. |
 
 > The picker hides *Meal planner* once one exists and *Meal weekday
 > override* once all seven weekdays are covered.
@@ -195,6 +199,13 @@ familyboard:
         note: "Training om 18:00 — kies iets heel makkelijks"
         max_minutes: 15
     extra_notes: ""
+  display:
+    due_today_enabled: true
+    due_today_color: "#3498DB"
+    due_soon_enabled: true
+    due_soon_color: "#E67E22"
+    overdue_enabled: true
+    overdue_color: "#E74C3C"
 ```
 
 ### Member options
@@ -287,6 +298,21 @@ Drives the AI dinner-suggestion service
 | `max_minutes` | no | `30` | Maximum total prep time hint |
 | `day_overrides` | no | `{}` | Per-weekday tweaks. Keys are lowercase English weekday names. Each entry may set `note` and/or `max_minutes`. |
 | `extra_notes` | no | `""` | Free-form text appended at the end of the prompt |
+
+### Display options
+
+Controls which urgency tiers are highlighted on the chores card and
+their accent colors. All tiers default to enabled when no Display
+sub-item exists.
+
+| Key | Required | Default | Description |
+|-----|----------|---------|-------------|
+| `due_today_enabled` | no | `true` | Show blue highlight for chores due today |
+| `due_today_color` | no | `#3498DB` | Accent color for due-today tier |
+| `due_soon_enabled` | no | `true` | Show orange highlight for chores due within 2 days |
+| `due_soon_color` | no | `#E67E22` | Accent color for due-soon tier |
+| `overdue_enabled` | no | `true` | Show red highlight for overdue chores |
+| `overdue_color` | no | `#E74C3C` | Accent color for overdue tier |
 
 > **Deprecated:** the legacy top-level `meal_calendar:` and
 > `meal_planner:` keys are still accepted but emit a deprecation
@@ -383,6 +409,7 @@ layout, alongside core or third-party cards.
 | `custom:familyboard-calendar-card` | `members_entity`, calendar entity_ids | Calendar timeline view |
 | `custom:familyboard-filter-card` | `filter_entity`, `members_entity` | Standalone member filter chips (alternative to the progress card's built-in filter) |
 | `custom:familyboard-progress-card` | `entity` | Per-member progress rings; with `selectable: true` + `filter_entity` the tiles double as the member filter |
+| `custom:familyboard-recent-chores-card` | `entity` (default `sensor.familyboard_recent_chores`) | Chronological list of the most recent chore completions with member-color dots |
 
 ### Example progress card with built-in filter
 
@@ -536,9 +563,9 @@ is fully optional — the cards work with any theme.
 ## Dependencies
 
 The FamilyBoard cards themselves are self-contained, but the bundled
-dashboard strategy (`strategy: custom:familyboard`) renders a few
-third-party cards. Install these from HACS — the integration logs a
-warning and posts a persistent notification if any are missing:
+dashboard strategy (`strategy: custom:familyboard`) uses a few
+third-party cards for chip styling and pop-ups. Install these from
+HACS:
 
 - [Mushroom Cards](https://github.com/piitaya/lovelace-mushroom)
 - [card-mod](https://github.com/thomasloven/lovelace-card-mod)
