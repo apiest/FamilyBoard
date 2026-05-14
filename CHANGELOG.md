@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **CalDAV connection sub-item** — connect FamilyBoard directly to a
+  CalDAV server (Nextcloud, Baikal, iCloud, …) via Settings → Devices
+  & Services → FamilyBoard → ➕ CalDAV connection. Each CalDAV
+  calendar is exposed as a `todo.*` entity that can be used in
+  `chores:` or `shared_chores:` alongside any other todo entity.
+- **RFC 5545-compliant VTODO handling.** All VTODO fields are
+  preserved and exposed: `DTSTART`, `DUE`, `COMPLETED`, `PRIORITY`,
+  `PERCENT-COMPLETE`, `LOCATION`, `URL`, `CATEGORIES`, `RRULE`,
+  `DESCRIPTION`. HA's built-in CalDAV strips these; FamilyBoard's
+  CalDAV entities keep them in `extra_state_attributes.vtodo_items`.
+- **Recurring task completion that actually works.** Completing a
+  recurring VTODO advances the `DUE` date to the next RRULE
+  occurrence instead of marking the task done. Supports `FREQ=DAILY`,
+  `WEEKLY`, `MONTHLY`, `YEARLY`, `BYDAY`, `INTERVAL`, `COUNT` and
+  `UNTIL`. When the recurrence is exhausted the task is marked
+  `COMPLETED` with a timestamp. `DTSTART` stays anchored so `COUNT`
+  and `UNTIL` compute correctly. A per-connection
+  `server_handles_rrule` toggle (default off) lets servers that
+  handle recurrence themselves (e.g. Exchange) take over — FamilyBoard
+  just marks COMPLETED and the server creates the next occurrence.
+- **YAML `caldav:` block** for bootstrapping CalDAV connections
+  without the UI.
 - **Chore urgency styling** — chores card now highlights overdue
   (red), due-soon (orange) and due-today (blue) rows with a tinted
   background and colored left border. Each tier is independently

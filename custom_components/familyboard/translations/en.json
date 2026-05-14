@@ -193,6 +193,27 @@
       "abort": {
         "already_configured": "Display settings already exist. Reconfigure the existing entry instead."
       }
+    },
+    "caldav_connection": {
+      "initiate_flow": {
+        "user": "Add CalDAV connection",
+        "reconfigure": "Reconfigure CalDAV connection"
+      },
+      "entry_type": "CalDAV connection",
+      "step": {
+        "user": {
+          "title": "CalDAV connection",
+          "description": "Connect to a CalDAV server (e.g. Nextcloud) for RFC-compliant todo management with recurring task support.",
+          "data": {
+            "url": "CalDAV server URL",
+            "username": "Username",
+            "password": "Password",
+            "name": "Connection name (optional)",
+            "verify_ssl": "Verify SSL certificate",
+            "server_handles_rrule": "Server handles recurring tasks"
+          }
+        }
+      }
     }
   },
   "entity": {

@@ -22,6 +22,7 @@ SUBENTRY_TRASH = "trash"
 SUBENTRY_MEAL_PLANNER = "meal_planner"
 SUBENTRY_MEAL_DAY_OVERRIDE = "meal_day_override"
 SUBENTRY_DISPLAY = "display"
+SUBENTRY_CALDAV_CONNECTION = "caldav_connection"
 SUBENTRY_TYPES: tuple[str, ...] = (
     SUBENTRY_MEMBER,
     SUBENTRY_EXTRA_CALENDAR,
@@ -31,6 +32,7 @@ SUBENTRY_TYPES: tuple[str, ...] = (
     SUBENTRY_MEAL_PLANNER,
     SUBENTRY_MEAL_DAY_OVERRIDE,
     SUBENTRY_DISPLAY,
+    SUBENTRY_CALDAV_CONNECTION,
 )
 WEEKDAYS: tuple[str, ...] = (
     "monday",

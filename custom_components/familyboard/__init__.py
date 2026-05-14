@@ -32,6 +32,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
+from .caldav_client import CalDAVClientManager
 from .const import (
     CHORE_CLAIM_STORAGE_KEY,
     CHORE_CLAIM_STORAGE_VERSION,
@@ -82,6 +83,7 @@ PLATFORMS: list[Platform] = [
     Platform.TEXT,
     Platform.SWITCH,
     Platform.DATETIME,
+    Platform.TODO,
 ]
 
 # (resource_id, filename) — registered as Lovelace module resources
@@ -252,6 +254,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     fb["trash_chore_manager"] = trash_chore_manager
 
+    # CalDAV client managers (one per CalDAV connection subentry)
+    caldav_managers: list[CalDAVClientManager] = []
+    for caldav_conf in conf.get("caldav_connections", []):
+        mgr = CalDAVClientManager(hass, caldav_conf)
+        caldav_managers.append(mgr)
+    fb["caldav_managers"] = caldav_managers
+
     # Coordinator (first refresh delayed until HA fully started)
     coordinator = FamilyBoardCoordinator(
         hass, conf, reminder_manager, trash_chore_manager
@@ -274,6 +283,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await _async_link_entities(hass, entry)
         await reminder_manager.async_start()
         await trash_chore_manager.async_start()
+        for caldav_mgr in caldav_managers:
+            try:
+                await caldav_mgr.async_start()
+            except Exception:
+                _LOGGER.exception("CalDAV manager failed to start")
         await coordinator.async_load_meal_suggestion()
         await coordinator.async_load_claims()
         await coordinator.async_load_history()
@@ -306,6 +320,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if trash_chore_manager is not None:
         await trash_chore_manager.async_stop()
 
+    for caldav_mgr in fb.get("caldav_managers", []):
+        await caldav_mgr.async_stop()
+
     for svc in ("add_event", "add_meal", "snooze_test", "cancel_reminder"):
         if hass.services.has_service(DOMAIN, svc):
             hass.services.async_remove(DOMAIN, svc)
@@ -313,6 +330,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Keep `config` so a YAML reload can re-create the entry without reload of HA
     fb.pop("reminder_manager", None)
     fb.pop("trash_chore_manager", None)
+    fb.pop("caldav_managers", None)
     fb.pop("coordinator", None)
     fb.pop("select", None)
     fb.pop("text", None)

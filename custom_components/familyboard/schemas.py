@@ -165,6 +165,17 @@ DISPLAY_SCHEMA = vol.Schema(
     }
 )
 
+CALDAV_CONNECTION_SCHEMA = vol.Schema(
+    {
+        vol.Required("url"): cv.url,
+        vol.Required("username"): cv.string,
+        vol.Required("password"): cv.string,
+        vol.Optional("name"): cv.string,
+        vol.Optional("verify_ssl", default=True): cv.boolean,
+        vol.Optional("server_handles_rrule", default=False): cv.boolean,
+    }
+)
+
 
 OPTIONS_SCHEMA = vol.All(
     _expand_meals_block,

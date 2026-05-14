@@ -42,6 +42,7 @@ import voluptuous as vol
 from .const import (
     CALENDAR_CATEGORIES,
     DEFAULT_CALENDAR_CATEGORY,
+    SUBENTRY_CALDAV_CONNECTION,
     SUBENTRY_DISPLAY,
     SUBENTRY_EXTRA_CALENDAR,
     SUBENTRY_MEAL_DAY_OVERRIDE,
@@ -98,6 +99,11 @@ def display_uid() -> str:
     return "default"
 
 
+def caldav_connection_uid(url: str) -> str:
+    """Return the stable unique_id for a CalDAV connection subentry."""
+    return _slug(url)
+
+
 def meal_day_override_uid(weekday: str) -> str:
     """Return the stable unique_id for a meal day-override subentry."""
     return weekday.lower()
@@ -124,6 +130,7 @@ def compose_conf(entry: ConfigEntry) -> dict[str, Any]:
     meal_overrides: dict[str, dict[str, Any]] = {}
     meal_calendar: str | None = None
     display: dict[str, Any] | None = None
+    caldav_connections: list[dict[str, Any]] = []
 
     for sub in entry.subentries.values():
         data = dict(sub.data)
@@ -156,6 +163,8 @@ def compose_conf(entry: ConfigEntry) -> dict[str, Any]:
                 meal_overrides[wd] = ov
         elif st == SUBENTRY_DISPLAY:
             display = data
+        elif st == SUBENTRY_CALDAV_CONNECTION:
+            caldav_connections.append(data)
 
     # Attach extras to members
     for name, extras in extras_by_member.items():
@@ -177,6 +186,8 @@ def compose_conf(entry: ConfigEntry) -> dict[str, Any]:
         conf["meal_planner"] = meal_planner
     if display is not None:
         conf["display"] = display
+    if caldav_connections:
+        conf["caldav_connections"] = caldav_connections
     return conf
 
 
@@ -402,6 +413,17 @@ async def upsert_yaml(
     display = yaml_conf.get("display")
     if display:
         _upsert(SUBENTRY_DISPLAY, "Display", display_uid(), dict(display))
+
+    caldav = yaml_conf.get("caldav")
+    if caldav:
+        c = dict(caldav)
+        url = c.get("url", "")
+        _upsert(
+            SUBENTRY_CALDAV_CONNECTION,
+            c.get("name") or url,
+            caldav_connection_uid(url),
+            c,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1164,6 +1186,76 @@ class DisplaySubentryFlow(ConfigSubentryFlow):
         return self.async_show_form(step_id="user", data_schema=schema)
 
 
+# ----- CalDAV connection ---------------------------------------------------
+
+
+class CalDAVConnectionSubentryFlow(ConfigSubentryFlow):
+    """Add or reconfigure a CalDAV server connection."""
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Show the form (handles both add and reconfigure submissions)."""
+        existing = None
+        if self.source == config_entries.SOURCE_RECONFIGURE:
+            existing = dict(self._get_reconfigure_subentry().data)
+        return await self._show(user_input, existing=existing)
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Edit form pre-filled from the existing subentry data."""
+        existing = self._get_reconfigure_subentry()
+        return await self._show(user_input, existing=dict(existing.data))
+
+    async def _show(
+        self,
+        user_input: dict[str, Any] | None,
+        existing: dict[str, Any] | None,
+    ) -> SubentryFlowResult:
+        errors: dict[str, str] = {}
+        entry = self._get_entry()
+        if user_input is not None:
+            data = _strip_empties(user_input)
+            url = data.get("url", "")
+            uid = caldav_connection_uid(url)
+            title = data.get("name") or url
+            if existing is None:
+                return self.async_create_entry(title=title, data=data, unique_id=uid)
+            return self.async_update_and_abort(
+                entry,
+                self._get_reconfigure_subentry(),
+                data=data,
+                title=title,
+                unique_id=uid,
+            )
+
+        d = existing or {}
+        schema = vol.Schema(
+            {
+                vol.Required("url", default=d.get("url", vol.UNDEFINED)): _text_sel(),
+                vol.Required(
+                    "username", default=d.get("username", vol.UNDEFINED)
+                ): _text_sel(),
+                vol.Required(
+                    "password", default=d.get("password", vol.UNDEFINED)
+                ): selector.TextSelector(selector.TextSelectorConfig(type="password")),
+                vol.Optional(
+                    "name",
+                    description={"suggested_value": d.get("name", "")},
+                ): _text_sel(),
+                vol.Optional(
+                    "verify_ssl", default=d.get("verify_ssl", True)
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    "server_handles_rrule",
+                    default=d.get("server_handles_rrule", False),
+                ): selector.BooleanSelector(),
+            }
+        )
+        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+
 # ---------------------------------------------------------------------------
 # Registry: maps subentry_type → flow class. Consumed by the parent
 # ConfigFlow's ``async_get_supported_subentry_types``.
@@ -1178,6 +1270,7 @@ SUBENTRY_FLOW_REGISTRY: dict[str, type[ConfigSubentryFlow]] = {
     SUBENTRY_MEAL_PLANNER: MealPlannerSubentryFlow,
     SUBENTRY_MEAL_DAY_OVERRIDE: MealDayOverrideSubentryFlow,
     SUBENTRY_DISPLAY: DisplaySubentryFlow,
+    SUBENTRY_CALDAV_CONNECTION: CalDAVConnectionSubentryFlow,
 }
 
 
@@ -1208,6 +1301,7 @@ def supported_subentry_types(
 __all__ = [
     "DISPLAY_DEFAULTS",
     "SUBENTRY_FLOW_REGISTRY",
+    "CalDAVConnectionSubentryFlow",
     "DisplaySubentryFlow",
     "ExtraCalendarSubentryFlow",
     "MealDayOverrideSubentryFlow",
@@ -1216,6 +1310,7 @@ __all__ = [
     "SharedCalendarSubentryFlow",
     "SharedChoreSubentryFlow",
     "TrashSubentryFlow",
+    "caldav_connection_uid",
     "compose_conf",
     "display_uid",
     "extra_calendar_uid",

@@ -48,6 +48,39 @@ FamilyBoard doesn't ask my family to change how they function; it changes the en
   Everything is a `select` / `text` / `switch` / `datetime` entity with
   proper restore-state and config-flow support.
 
+## Why FamilyBoard has its own CalDAV integration
+
+Home Assistant ships a CalDAV integration, but it converts VTODOs into
+HA's simplified `TodoItem` — which has no concept of `RRULE`,
+`DTSTART`, `PRIORITY`, `PERCENT-COMPLETE`, `LOCATION`, `URL` or
+`CATEGORIES`. Those fields are silently stripped on read and
+permanently lost on write.
+
+The practical damage is worst for **recurring tasks**: when you
+complete a weekly chore, HA marks the VTODO `COMPLETED` and the
+recurrence is gone. Nextcloud doesn't re-create it server-side,
+Tasks.org handles recurrence client-side only, and HA never wrote the
+next occurrence. The task simply disappears.
+
+FamilyBoard solves this by owning the CalDAV connection:
+
+| | HA built-in CalDAV | FamilyBoard CalDAV |
+|---|---|---|
+| RRULE on read | stripped | preserved |
+| Complete recurring task | marks COMPLETED → task gone | advances DUE to next occurrence |
+| RRULE exhausted (COUNT/UNTIL) | n/a | marks COMPLETED with timestamp |
+| DTSTART | stripped | preserved (anchors the RRULE) |
+| PRIORITY | stripped | preserved (0–9) |
+| PERCENT-COMPLETE | stripped | preserved (0–100) |
+| LOCATION, URL | stripped | preserved |
+| CATEGORIES | stripped | preserved |
+| Extra fields exposed via | — | `extra_state_attributes.vtodo_items` |
+
+The resulting `todo.*` entities are standard HA `TodoListEntity`
+instances, so they work with `todo.get_items`, automations, and
+FamilyBoard's own chores pipeline — mix and match with HA Local To-do,
+Google Tasks, or any other todo integration.
+
 ## Features
 
 - **Per-member calendar proxies** — primary + extra calendars, Google Tasks filtered out automatically.
@@ -63,6 +96,7 @@ FamilyBoard doesn't ask my family to change how they function; it changes the en
 - **Calendar category filter** — tag each calendar with a category (`personal`, `work`, `school`, `hobby`, `family`, `shared`, `other`); the dashboard renders one toggle chip per category in use, so you can hide the work calendar with one tap. Toggle state survives restarts.
 - **Add-event form entities** — built-in `select`, `text`, `switch` and `datetime` entities power a "create event" form with cascading member → calendar pickers.
 - **Event countdown** — kiosk-editable countdown to a single target date (label + date), rendered by `custom:familyboard-countdown-card`. Auto-hides when no label is set and self-clears the day after the event.
+- **CalDAV connection** — connect directly to a CalDAV server (Nextcloud, Baikal, iCloud, …). Each CalDAV calendar with VTODOs is exposed as a `todo.*` entity that can be mixed with HA's built-in todo entities in `chores:` or `shared_chores:`. Unlike HA's built-in CalDAV, FamilyBoard preserves all RFC 5545 VTODO fields (RRULE, DTSTART, PRIORITY, PERCENT-COMPLETE, LOCATION, URL, CATEGORIES) and handles recurring task completion correctly — advancing the DUE date to the next occurrence instead of silently dropping the recurrence.
 
 ## Installation
 
@@ -115,6 +149,7 @@ Available sub-item types:
 | Meal planner | 0..1 | Singleton — meal calendar + AI suggestion settings. |
 | Meal weekday override | 0..7 (one per weekday) | Tweak the AI meal prompt for one specific weekday (e.g. "Thursday: training at 6pm — keep it quick"). Optionally overrides the planner's default max prep time for that day. |
 | Display | 0..1 | Singleton — toggle urgency tiers (due today / due soon / overdue) on or off and customise their accent colors. |
+| CalDAV connection | 0..N | A CalDAV server connection — each calendar with VTODOs becomes a `todo.*` entity. |
 
 > The picker hides *Meal planner* once one exists and *Meal weekday
 > override* once all seven weekdays are covered.
@@ -199,6 +234,12 @@ familyboard:
         note: "Training om 18:00 — kies iets heel makkelijks"
         max_minutes: 15
     extra_notes: ""
+  caldav:
+    - url: https://nextcloud.local/remote.php/dav
+      username: familyboard
+      password: !secret caldav_password
+      name: Nextcloud
+      verify_ssl: true
   display:
     due_today_enabled: true
     due_today_color: "#3498DB"
@@ -314,6 +355,26 @@ sub-item exists.
 | `overdue_enabled` | no | `true` | Show red highlight for overdue chores |
 | `overdue_color` | no | `#E74C3C` | Accent color for overdue tier |
 
+### CalDAV connection (`caldav`)
+
+Connect to a CalDAV server to expose VTODO calendars as `todo.*`
+entities with full RFC 5545 field support. See
+[Why FamilyBoard has its own CalDAV integration](#why-familyboard-has-its-own-caldav-integration)
+for the motivation.
+
+| Key | Required | Default | Description |
+|-----|----------|---------|-------------|
+| `url` | yes | — | CalDAV server URL (e.g. `https://nextcloud.local/remote.php/dav`) |
+| `username` | yes | — | CalDAV username |
+| `password` | yes | — | CalDAV password (use `!secret` in YAML) |
+| `name` | no | URL | Friendly name for the connection |
+| `verify_ssl` | no | `true` | Verify the server's TLS certificate |
+| `server_handles_rrule` | no | `false` | Set to `true` if your server advances recurring tasks server-side (e.g. some Exchange/Zimbra setups). When `false` (default, correct for Nextcloud / Baikal / Radicale), FamilyBoard advances the DUE date client-side on completion. |
+
+Each calendar discovered on the server becomes a `todo.*` entity.
+Use those entity IDs in `chores:` or `shared_chores:` just like any
+other todo entity.
+
 > **Deprecated:** the legacy top-level `meal_calendar:` and
 > `meal_planner:` keys are still accepted but emit a deprecation
 > warning. Migrate to a single `meals:` block (with `calendar:` nested
@@ -328,6 +389,12 @@ sub-item exists.
 | `calendar.familyboard_<name>` | Per-member proxy (Google Tasks filtered out) |
 | `calendar.familyboard_alles` | Cross-member deduplicated view with member markers |
 | `calendar.familyboard_trash` | Trash collection dates from configured sensors |
+
+### Todo lists
+
+| Entity | Description |
+|--------|-------------|
+| `todo.familyboard_caldav_<connection>_<calendar>` | CalDAV-backed todo list with full RFC 5545 VTODO support. `extra_state_attributes.vtodo_items` exposes all fields (RRULE, DTSTART, PRIORITY, PERCENT-COMPLETE, LOCATION, URL, CATEGORIES). |
 
 ### Sensors
 
