@@ -1,3 +1,5 @@
+**ARCHIVED** - Moved to: [apiest/ha-familyboard](https://github.com/apiest/ha-familyboard)
+
 # FamilyBoard
 
 [![hacs][hacs-badge]][hacs-url]
